@@ -1,0 +1,117 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Server {
+  id                      String        @id @default(cuid())
+  guildId                 String        @unique // Discord Guild ID
+  name                    String        // Discord Guild name
+  status                  ServerStatus  @default(ACTIVE) // Bot activity status in server
+  repositories            Repository[]
+  errorLogs               ErrorLog[]
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+  messagesSent            Int              @default(0) // Added field for message count
+}
+
+model Repository {
+  id                    String            @id @default(cuid())
+  url                   String            // URL of the GitHub repository
+  notificationChannelId String?           // Default channel for repository notifications (optional)
+  webhookSecret         String?           // Repository-specific webhook secret
+  server                Server            @relation(fields: [serverId], references: [id])
+  serverId              String
+  trackedBranches       TrackedBranch[]
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@unique([serverId, url]) // A server can only link a specific repo URL once
+}
+
+model TrackedBranch {
+  id             String     @id @default(cuid())
+  branchName     String     // Use "*" to indicate all branches
+  channelId      String?    // Optional specific channel override
+  repository     Repository @relation(fields: [repositoryId], references: [id])
+  repositoryId   String
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([repositoryId, branchName, channelId]) // A repo can track a branch in different channels
+}
+
+model ErrorLog {
+  id          String    @id @default(cuid())
+  server      Server?   @relation(fields: [serverId], references: [id])
+  serverId    String?
+  level       LogLevel  @default(ERROR)
+  message     String
+  stack       String?   // Stack trace
+  context     Json?     // Additional context data
+  source      String?   // Source of error (webhook, bot, api, etc.)
+  userId      String?   // Discord user ID if applicable
+  channelId   String?   // Discord channel ID if applicable
+  resolved    Boolean   @default(false)
+  resolvedAt  DateTime?
+  resolvedBy  String?   // Admin who resolved the error
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([level, createdAt])
+  @@index([resolved, createdAt])
+  @@index([serverId, createdAt])
+}
+
+model SystemLog {
+  id        String    @id @default(cuid())
+  level     LogLevel  @default(INFO)
+  category  String    // auth, database, webhook, bot, api, etc.
+  message   String
+  details   Json?     // Additional details
+  userId    String?   // Admin user ID if applicable
+  ipAddress String?   // IP address for admin actions
+  createdAt DateTime  @default(now())
+
+  @@index([category, createdAt])
+  @@index([level, createdAt])
+}
+
+model Performance {
+  id              String    @id @default(cuid())
+  endpoint        String    // API endpoint or operation name
+  method          String?   // HTTP method if applicable
+  responseTime    Int       // Response time in milliseconds
+  statusCode      Int?      // HTTP status code
+  memoryUsage     Float?    // Memory usage in MB
+  cpuUsage        Float?    // CPU usage percentage
+  activeConnections Int?    // Number of active connections
+  errorCount      Int       @default(0)
+  timestamp       DateTime  @default(now())
+
+  @@index([endpoint, timestamp])
+  @@index([timestamp])
+}
+
+enum ServerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+  CRITICAL
+}

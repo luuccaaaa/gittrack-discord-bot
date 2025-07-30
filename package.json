@@ -1,0 +1,46 @@
+{
+  "name": "gittrack-discord-bot",
+  "version": "1.0.0",
+  "description": "A Discord bot that monitors GitHub repository activity and sends real-time notifications to Discord channels",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon index.js",
+    "start": "node index.js"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "github",
+    "webhooks",
+    "notifications",
+    "discord.js",
+    "prisma",
+    "postgresql"
+  ],
+  "author": "GitTrack Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gittrack/gittrack-discord-bot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gittrack/gittrack-discord-bot/issues"
+  },
+  "homepage": "https://github.com/gittrack/gittrack-discord-bot#readme",
+  "dependencies": {
+    "@prisma/client": "^6.8.2",
+    "axios": "^1.9.0",
+    "discord.js": "^14.19.3",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.8.2",
+    "nodemon": "^3.1.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

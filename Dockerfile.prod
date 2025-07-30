@@ -1,0 +1,57 @@
+# Stage 1: Builder
+FROM node:22-alpine AS builder
+WORKDIR /usr/src/app
+
+# Copy package.json and lock file
+COPY package*.json ./
+
+# Install all dependencies (including devDependencies for build steps like prisma generate)
+RUN npm ci
+
+# Copy the rest of the application code
+COPY . .
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# If you have a TypeScript build step or similar, uncomment and adapt:
+# RUN npm run build
+
+# Prune devDependencies after build steps are complete
+RUN npm prune --production
+
+# Stage 2: Runner
+FROM node:22-alpine AS runner
+WORKDIR /usr/src/app
+
+ENV NODE_ENV=production
+# The bot service will run on port 3001 internally
+ENV PORT=3001
+
+# Create a non-root user and group for security
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+# Copy pruned node_modules and necessary source files from builder stage
+COPY --from=builder --chown=appuser:appgroup /usr/src/app/node_modules ./node_modules
+COPY --from=builder --chown=appuser:appgroup /usr/src/app/package*.json ./
+COPY --from=builder --chown=appuser:appgroup /usr/src/app/prisma ./prisma
+COPY --from=builder --chown=appuser:appgroup /usr/src/app/index.js .
+COPY --from=builder --chown=appuser:appgroup /usr/src/app/bot.js .
+COPY --from=builder --chown=appuser:appgroup /usr/src/app/webhookHandler.js .
+COPY --from=builder --chown=appuser:appgroup /usr/src/app/milestoneAndWorkflowHandlers.js .
+COPY --from=builder --chown=appuser:appgroup /usr/src/app/pullRequestHandlers.js .
+COPY --from=builder --chown=appuser:appgroup /usr/src/app/commands ./commands
+COPY --from=builder --chown=appuser:appgroup /usr/src/app/functions ./functions
+# If you had a dist folder from a build step, copy it too:
+# COPY --from=builder --chown=appuser:appgroup /usr/src/app/dist ./dist
+
+# Create a logs directory if your app writes to it, and set permissions
+RUN mkdir -p /usr/src/app/logs && \
+    chown -R appuser:appgroup /usr/src/app
+
+# Switch to the non-root user
+USER appuser
+
+EXPOSE ${PORT}
+# The command to run migrations and start the app will be in docker-compose.prod.yml
+CMD ["node", "index.js"]

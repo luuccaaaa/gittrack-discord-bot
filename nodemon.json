@@ -1,0 +1,24 @@
+{
+  "watch": [
+    "index.js",
+    "bot.js",
+    "webhookHandler.js",
+    "milestoneAndWorkflowHandlers.js",
+    "pullRequestHandlers.js",
+    "commands/",
+    "functions/"
+  ],
+  "ext": "js,json",
+  "ignore": [
+    "node_modules/",
+    "logs/",
+    "*.log",
+    "prisma/migrations/",
+    ".git/"
+  ],
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "delay": "1000",
+  "verbose": true
+} 

@@ -1,0 +1,62 @@
+services:
+  bot:
+    build: .
+    container_name: gittrack-bot
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=${DATABASE_URL}
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - CLIENT_ID=${CLIENT_ID}
+      - GUILD_ID=${GUILD_ID}
+      - PORT=3000
+      - MAX_REPOS_ALLOWED=${MAX_REPOS_ALLOWED:-10}
+      - MAX_NOTIFICATION_CHANNELS_ALLOWED=${MAX_NOTIFICATION_CHANNELS_ALLOWED:-unlimited}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+      # Hot reloading: Mount source code for live updates
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+    command: npm run dev
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - gittrack-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: gittrack-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=gittrack
+      - POSTGRES_USER=gittrack
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./prisma/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gittrack -d gittrack"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - gittrack-network
+
+volumes:
+  postgres_data:
+
+networks:
+  gittrack-network:
+    driver: bridge 
