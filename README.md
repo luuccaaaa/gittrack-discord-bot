@@ -93,7 +93,6 @@ GitTrack is an open-source Discord bot that monitors GitHub repository activity 
 |----------|-------------|----------|---------|
 | `DISCORD_TOKEN` | Discord bot token | Yes | - |
 | `CLIENT_ID` | Discord bot client ID | Yes | - |
-| `GUILD_ID` | Discord server ID | Yes | - |
 | `DATABASE_URL` | PostgreSQL connection string | Yes | - |
 | `WEBHOOK_URL` | Public webhook URL for GitHub | Yes | - |
 | `PUBLIC_URL` | Public base URL of your bot | Yes | - |

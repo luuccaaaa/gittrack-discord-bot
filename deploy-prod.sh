@@ -19,7 +19,7 @@ fi
 source .env
 
 # Check required environment variables
-required_vars=("DISCORD_TOKEN" "CLIENT_ID" "GUILD_ID" "DATABASE_URL")
+required_vars=("DISCORD_TOKEN" "CLIENT_ID" "DATABASE_URL")
 for var in "${required_vars[@]}"; do
     if [ -z "${!var}" ]; then
         echo "❌ Error: $var is not set in .env file"
