@@ -39,8 +39,8 @@ GitTrack is an open-source Discord bot that monitors GitHub repository activity 
 
 1. **Clone and configure**
    ```bash
-   git clone https://github.com/gittrack/gittrack-discord-bot.git
-   cd gittrack-discord-bot
+   git clone https://github.com/luuccaaaa/gittrack-discord.git
+   cd gittrack-discord
    cp .env.example .env
    # Edit .env with your configuration
    ```
@@ -148,8 +148,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
-- **Issues**: [GitHub Issues](https://github.com/gittrack/gittrack-discord-bot/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/gittrack/gittrack-discord-bot/discussions)
+- **Issues**: [GitHub Issues](https://github.com/luuccaaaa/gittrack-discord/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/luuccaaaa/gittrack-discord/discussions)
 - **Email**: support@gittrack.me
 
 ## 🙏 Acknowledgments
