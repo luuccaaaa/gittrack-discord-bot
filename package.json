@@ -22,12 +22,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/luuccaaaa/gittrack-discord-bot.git"
+    "url": "https://github.com/gittrack/gittrack-discord-bot.git"
   },
   "bugs": {
-    "url": "https://github.com/luuccaaaa/gittrack-discord-bot/issues"
+    "url": "https://github.com/gittrack/gittrack-discord-bot/issues"
   },
-  "homepage": "https://github.com/luuccaaaa/gittrack-discord-bot#readme",
+  "homepage": "https://github.com/gittrack/gittrack-discord-bot#readme",
   "dependencies": {
     "@prisma/client": "^6.8.2",
     "axios": "^1.9.0",
