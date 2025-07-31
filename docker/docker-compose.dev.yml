@@ -1,26 +1,24 @@
 services:
   bot:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: gittrack-bot
     restart: unless-stopped
+    env_file:
+      - ../.env
     environment:
       - NODE_ENV=development
-      - DATABASE_URL=${DATABASE_URL}
-      - DISCORD_TOKEN=${DISCORD_TOKEN}
-      - CLIENT_ID=${CLIENT_ID}
-
       - PORT=3000
-      - MAX_REPOS_ALLOWED=${MAX_REPOS_ALLOWED:-10}
-      - MAX_NOTIFICATION_CHANNELS_ALLOWED=${MAX_NOTIFICATION_CHANNELS_ALLOWED:-unlimited}
     ports:
       - "3000:3000"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - ./logs:/app/logs
+      - ../logs:/app/logs
       # Hot reloading: Mount source code for live updates
-      - .:/usr/src/app
+      - ..:/usr/src/app
       - /usr/src/app/node_modules
     command: npm run dev
     healthcheck:
@@ -42,7 +40,7 @@ services:
       - POSTGRES_PASSWORD=password
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./prisma/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ../prisma/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
     healthcheck:

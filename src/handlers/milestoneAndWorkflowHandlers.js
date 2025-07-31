@@ -1,4 +1,4 @@
-const { findMatchingBranches } = require('./functions/branchMatcher');
+const { findMatchingBranches } = require('../functions/branchMatcher');
 
 async function handleMilestoneEvent(req, res, payload, prisma, botClient, repoContext) {
   const repoUrl = payload.repository.html_url;

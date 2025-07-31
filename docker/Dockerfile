@@ -49,17 +49,7 @@ COPY --from=deps --chown=appuser:appgroup /usr/src/app/node_modules ./node_modul
 COPY --from=builder --chown=appuser:appgroup /usr/src/app/package.json ./package.json
 
 # Copy application code
-COPY --from=builder --chown=appuser:appgroup /usr/src/app/index.js ./
-COPY --from=builder --chown=appuser:appgroup /usr/src/app/bot.js ./
-COPY --from=builder --chown=appuser:appgroup /usr/src/app/webhookHandler.js ./
-COPY --from=builder --chown=appuser:appgroup /usr/src/app/milestoneAndWorkflowHandlers.js ./
-COPY --from=builder --chown=appuser:appgroup /usr/src/app/pullRequestHandlers.js ./
-
-# Copy 'commands' directory
-COPY --from=builder --chown=appuser:appgroup /usr/src/app/commands ./commands
-
-# Copy 'functions' directory
-COPY --from=builder --chown=appuser:appgroup /usr/src/app/functions ./functions
+COPY --from=builder --chown=appuser:appgroup /usr/src/app/src ./src
 
 # Copy Prisma schema and generated client
 COPY --from=builder --chown=appuser:appgroup /usr/src/app/prisma ./prisma
@@ -74,4 +64,4 @@ USER appuser
 
 EXPOSE 3000
 
-CMD ["node", "index.js"]
+CMD ["node", "src/index.js"]

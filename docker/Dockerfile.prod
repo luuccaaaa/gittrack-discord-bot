@@ -34,14 +34,8 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 # Copy pruned node_modules and necessary source files from builder stage
 COPY --from=builder --chown=appuser:appgroup /usr/src/app/node_modules ./node_modules
 COPY --from=builder --chown=appuser:appgroup /usr/src/app/package*.json ./
+COPY --from=builder --chown=appuser:appgroup /usr/src/app/src ./src
 COPY --from=builder --chown=appuser:appgroup /usr/src/app/prisma ./prisma
-COPY --from=builder --chown=appuser:appgroup /usr/src/app/index.js .
-COPY --from=builder --chown=appuser:appgroup /usr/src/app/bot.js .
-COPY --from=builder --chown=appuser:appgroup /usr/src/app/webhookHandler.js .
-COPY --from=builder --chown=appuser:appgroup /usr/src/app/milestoneAndWorkflowHandlers.js .
-COPY --from=builder --chown=appuser:appgroup /usr/src/app/pullRequestHandlers.js .
-COPY --from=builder --chown=appuser:appgroup /usr/src/app/commands ./commands
-COPY --from=builder --chown=appuser:appgroup /usr/src/app/functions ./functions
 # If you had a dist folder from a build step, copy it too:
 # COPY --from=builder --chown=appuser:appgroup /usr/src/app/dist ./dist
 
@@ -54,4 +48,4 @@ USER appuser
 
 EXPOSE ${PORT}
 # The command to run migrations and start the app will be in docker-compose.prod.yml
-CMD ["node", "index.js"]
+CMD ["node", "src/index.js"]
