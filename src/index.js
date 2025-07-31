@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { PrismaClient } = require('@prisma/client');
 const { initializeBot } = require('./bot');
-const { initializeWebServer } = require('./webhookHandler');
+const { initializeWebServer } = require('./handlers/webhookHandler');
 const express = require('express');
 const app = express();
 

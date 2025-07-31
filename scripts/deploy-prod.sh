@@ -5,7 +5,15 @@
 
 set -e
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Get the project root directory (parent of scripts)
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
 echo "🚀 Deploying GitTrack Discord Bot (Production)..."
+
+# Change to project root directory
+cd "$PROJECT_ROOT"
 
 # Check if .env file exists
 if [ ! -f .env ]; then
@@ -31,12 +39,12 @@ echo "✅ Environment variables validated"
 
 # Stop any existing services
 echo "🛑 Stopping existing services..."
-docker-compose -f docker-compose.prod.yml down
+docker-compose -f docker/docker-compose.prod.yml down
 
 # Build and start the production services
 echo "🔨 Building and starting production services..."
-docker-compose -f docker-compose.prod.yml build --no-cache
-docker-compose -f docker-compose.prod.yml up -d
+docker-compose -f docker/docker-compose.prod.yml build --no-cache
+docker-compose -f docker/docker-compose.prod.yml up -d
 
 # Wait for services to be ready
 echo "⏳ Waiting for services to be ready..."
@@ -44,7 +52,7 @@ sleep 15
 
 # Setup database schema
 echo "🗄️ Setting up database schema..."
-docker-compose -f docker-compose.prod.yml exec bot sh -c "
+docker-compose -f docker/docker-compose.prod.yml exec bot sh -c "
   if [ -d 'prisma/migrations' ] && [ \"\$(ls -A prisma/migrations)\" ]; then
     echo 'Using migrations...'
     npx prisma migrate deploy
@@ -56,7 +64,7 @@ docker-compose -f docker-compose.prod.yml exec bot sh -c "
 
 # Check if services are running
 echo "🔍 Checking service status..."
-docker-compose -f docker-compose.prod.yml ps
+docker-compose -f docker/docker-compose.prod.yml ps
 
 # Get the server IP/domain for webhook configuration
 echo "🌐 Bot is running on port 3000"
@@ -64,5 +72,5 @@ echo "📋 Webhook URL: http://$(hostname -I | awk '{print $1}'):3000/github-web
 echo "   (Replace with your domain if you have one configured)"
 
 echo "✅ GitTrack Discord Bot deployed successfully in production!"
-echo "📊 Check logs with: docker-compose -f docker-compose.prod.yml logs -f bot"
-echo "🔧 To stop: docker-compose -f docker-compose.prod.yml down" 
+echo "📊 Check logs with: docker-compose -f docker/docker-compose.prod.yml logs -f bot"
+echo "🔧 To stop: docker-compose -f docker/docker-compose.prod.yml down" 

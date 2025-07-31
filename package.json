@@ -2,11 +2,11 @@
   "name": "gittrack-discord-bot",
   "version": "1.0.0",
   "description": "A Discord bot that monitors GitHub repository activity and sends real-time notifications to Discord channels",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon index.js",
-    "start": "node index.js"
+    "dev": "nodemon --config config/nodemon.json src/index.js",
+    "start": "node src/index.js"
   },
   "keywords": [
     "discord",

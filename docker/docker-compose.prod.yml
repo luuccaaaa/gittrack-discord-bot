@@ -1,25 +1,23 @@
 services:
   bot:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.prod
     container_name: gittrack-bot
     restart: unless-stopped
+    env_file:
+      - ../.env
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=${DATABASE_URL}
-      - DISCORD_TOKEN=${DISCORD_TOKEN}
-      - CLIENT_ID=${CLIENT_ID}
-
       - PORT=3000
-      - MAX_REPOS_ALLOWED=${MAX_REPOS_ALLOWED:-10}
-      - MAX_NOTIFICATION_CHANNELS_ALLOWED=${MAX_NOTIFICATION_CHANNELS_ALLOWED:-unlimited}
     ports:
       - "3000:3001"
     volumes:
-      - ./logs:/app/logs
+      - ../logs:/app/logs
     networks:
       - gittrack-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -47,7 +47,7 @@ GitTrack is an open-source Discord bot that monitors GitHub repository activity 
 
 2. **Deploy**
    ```bash
-   ./deploy.sh
+   ./scripts/deploy.sh
    ```
 
 
@@ -105,25 +105,31 @@ GitTrack is an open-source Discord bot that monitors GitHub repository activity 
 ## 🏗️ Architecture
 
 ```
-src/
-├── commands/          # Discord slash commands
-├── functions/         # Utility functions (limits, permissions, branch matching)
-├── prisma/           # Database schema and migrations
-├── webhookHandler.js # GitHub webhook processing
-├── bot.js           # Discord bot setup
-└── index.js         # Application entry point
+Bot/
+├── src/                    # All source code
+│   ├── commands/          # Discord slash commands
+│   ├── functions/         # Utility functions (limits, permissions, branch matching)
+│   ├── handlers/          # Webhook and event handlers
+│   ├── bot.js             # Discord bot setup
+│   └── index.js           # Application entry point
+├── prisma/                # Database schema and migrations
+├── config/                # Configuration files
+├── docker/                # Docker deployment files
+├── scripts/               # Deployment scripts
+├── docs/                  # Development documentation
+└── README.md              # This file
 ```
 
 ### Key Components
 
-- **Discord Bot** (`bot.js`) - Handles Discord interactions and slash commands
-- **Webhook Handler** (`webhookHandler.js`) - Processes GitHub webhook events
-- **Limit Checker** (`functions/limitChecker.js`) - Manages configurable limits
+- **Discord Bot** (`src/bot.js`) - Handles Discord interactions and slash commands
+- **Webhook Handler** (`src/handlers/webhookHandler.js`) - Processes GitHub webhook events
+- **Limit Checker** (`src/functions/limitChecker.js`) - Manages configurable limits
 - **Database Layer** (`prisma/`) - Manages data persistence with Prisma ORM
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+We welcome contributions! Please see our [Contributing Guidelines](docs/CONTRIBUTING.md) for details.
 
 ### Development Setup
 
