@@ -115,12 +115,12 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
   const conclusion = workflow.conclusion; // success, failure, cancelled, etc.
   const branch = workflow.head_branch;
   
-  console.log(`Workflow run "${workflowName}" ${action} with conclusion "${conclusion}" in ${repoUrl} on branch ${branch}`);
-
   // Only send notifications for completed workflow runs
   if (action !== 'completed') {
     return { statusCode: 200, message: 'Workflow run event acknowledged.', channelId: null, messageId: null };
   }
+
+  console.log(`Workflow run "${workflowName}" ${action} with conclusion "${conclusion}" in ${repoUrl} on branch ${branch}`);
 
   try {
     // Use repoContext directly as it's the validated one for this webhook
