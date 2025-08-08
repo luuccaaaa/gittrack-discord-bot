@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const querystring = require('querystring');
 const { handleMilestoneEvent, handleWorkflowRunEvent } = require('./milestoneAndWorkflowHandlers');
+const { handleWorkflowJobEvent, handleCheckRunEvent } = require('./checksHandlers');
 const { handlePRReviewEvent, handlePRReviewCommentEvent } = require('./pullRequestHandlers');
 const { checkChannelLimit } = require('../functions/limitChecker');
 const { findMatchingBranches } = require('../functions/branchMatcher');
@@ -186,6 +187,10 @@ function initializeWebServer(prisma, botClient) {
           return await handleEventWithLogging(handleMilestoneEvent, req, res, payload, prisma, botClient, validatedRepositoryContext, loggingContext);
         case 'workflow_run':
           return await handleEventWithLogging(handleWorkflowRunEvent, req, res, payload, prisma, botClient, validatedRepositoryContext, loggingContext);
+        case 'workflow_job':
+          return await handleEventWithLogging(handleWorkflowJobEvent, req, res, payload, prisma, botClient, validatedRepositoryContext, loggingContext);
+        case 'check_run':
+          return await handleEventWithLogging(handleCheckRunEvent, req, res, payload, prisma, botClient, validatedRepositoryContext, loggingContext);
         case 'ping':
           return await handleEventWithLogging(handlePingEvent, req, res, payload, prisma, botClient, validatedRepositoryContext, loggingContext);
         default:
