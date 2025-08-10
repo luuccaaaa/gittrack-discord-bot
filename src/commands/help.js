@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -31,6 +31,8 @@ module.exports = {
           value: 
             '• `/remove-repo` - Remove a repository from tracking\n' +
             '• `/set-default-channel` - Set the default notification channel\n' +
+            '• `/set-event-channel` - Route a specific event (e.g., issues, release) to a channel\n' +
+            '• `/remove-event-channel` - Remove a specific event route from a repository\n' +
             '• `/reset` - Reset all bot data for this server (Admin only)',
           inline: false
         },
@@ -47,6 +49,15 @@ module.exports = {
       })
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    const components = [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel('GitHub Repo')
+          .setStyle(ButtonStyle.Link)
+          .setURL('https://github.com/luuccaaaa/gittrack-discord-bot')
+      )
+    ];
+
+    await interaction.reply({ embeds: [embed], components, ephemeral: true });
   },
 };

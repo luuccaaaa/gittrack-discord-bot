@@ -33,6 +33,7 @@ model Repository {
   server                Server            @relation(fields: [serverId], references: [id])
   serverId              String
   trackedBranches       TrackedBranch[]
+  eventChannels         RepositoryEventChannel[]
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
 
@@ -49,6 +50,18 @@ model TrackedBranch {
   updatedAt      DateTime   @updatedAt
 
   @@unique([repositoryId, branchName, channelId]) // A repo can track a branch in different channels
+}
+
+model RepositoryEventChannel {
+  id            String      @id @default(cuid())
+  repository    Repository  @relation(fields: [repositoryId], references: [id])
+  repositoryId  String
+  eventType     String      // e.g., "issues", "release", "star", etc.
+  channelId     String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([repositoryId, eventType])
 }
 
 model ErrorLog {

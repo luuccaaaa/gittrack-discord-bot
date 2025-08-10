@@ -19,8 +19,11 @@ async function handleMilestoneEvent(req, res, payload, prisma, botClient, repoCo
 
     // Use repoContext directly as it's the validated one for this webhook
     const serverConfig = repoContext.server;
-    // Use the repository-specific notification channel
-    const channelId = repoContext.notificationChannelId || 'pending';
+    // Prefer event-specific channel for milestone events
+    const mapping = await prisma.repositoryEventChannel.findFirst({
+      where: { repositoryId: repoContext.id, eventType: 'milestone' }
+    });
+    const channelId = mapping?.channelId || repoContext.notificationChannelId || 'pending';
 
     if (channelId === 'pending') {
         console.warn(`Notification channel pending for repository ${repoUrl} on server ${serverConfig.guildId}`);
