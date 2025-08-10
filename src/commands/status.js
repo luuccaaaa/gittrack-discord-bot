@@ -17,7 +17,8 @@ module.exports = {
         include: {
           repositories: {
             include: {
-              trackedBranches: true
+              trackedBranches: true,
+              eventChannels: true
             }
           }
         }
@@ -195,6 +196,22 @@ module.exports = {
             branchDisplay = 'No branches configured';
           }
 
+          // Build event routing details (only show explicitly mapped events)
+          let eventRoutingDisplay = 'No event-specific routing configured';
+          if (repo.eventChannels && repo.eventChannels.length > 0) {
+            const byChannel = new Map(); // channelId -> [eventType]
+            for (const ec of repo.eventChannels) {
+              if (!byChannel.has(ec.channelId)) byChannel.set(ec.channelId, []);
+              byChannel.get(ec.channelId).push(ec.eventType);
+            }
+            const lines = [];
+            for (const [channelId, events] of byChannel.entries()) {
+              const sorted = events.sort();
+              lines.push(`**<#${channelId}>**: ${sorted.map(e => `\`${e}\``).join(', ')}`);
+            }
+            eventRoutingDisplay = lines.join('\n');
+          }
+
           // Check webhook status
           const webhookStatus = repo.webhookSecret 
             ? '✅ Webhook configured' 
@@ -207,7 +224,7 @@ module.exports = {
 
           embed.addFields({
             name: displayUrl,
-            value: `**Webhook Status**: ${webhookStatus}\n**Tracked Branches by Channel**:\n${branchDisplay}`,
+            value: `**Webhook Status**: ${webhookStatus}\n**Tracked Branches by Channel**:\n${branchDisplay}\n**Event Routing**:\n${eventRoutingDisplay}`,
             inline: false
           });
         }

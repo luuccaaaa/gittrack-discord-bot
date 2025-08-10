@@ -262,6 +262,19 @@ function initializeWebServer(prisma, botClient) {
     }
   });
 
+  // Resolve channel for non-branch events with per-event override
+  async function getEventChannelId(prisma, repositoryId, eventType, fallbackChannelId) {
+    try {
+      const mapping = await prisma.repositoryEventChannel.findFirst({
+        where: { repositoryId, eventType }
+      });
+      return mapping?.channelId || fallbackChannelId || 'pending';
+    } catch (e) {
+      console.error('getEventChannelId error:', e);
+      return fallbackChannelId || 'pending';
+    }
+  }
+
   // Define event handlers to accept validatedRepositoryContext
   // Example for one handler (others would follow a similar pattern):
   async function handleIssueCommentEvent(req, res, payload, prisma, botClient, repoContext) {
@@ -280,8 +293,8 @@ function initializeWebServer(prisma, botClient) {
 
     // Use repoContext directly as it's the validated one for this webhook
     const serverConfig = repoContext.server;
-    // Use the repository-specific notification channel instead of the server-wide one
-    const channelId = repoContext.notificationChannelId || 'pending';
+    // Prefer event-specific channel for issue comments
+    const channelId = await getEventChannelId(prisma, repoContext.id, 'issue_comment', repoContext.notificationChannelId);
 
     if (channelId === 'pending') {
         console.warn(`Notification channel pending for repository ${repoUrl} on server ${serverConfig.guildId}`);
@@ -478,8 +491,8 @@ function initializeWebServer(prisma, botClient) {
     const action = payload.action;
     const pr = payload.pull_request;
     const serverConfig = repoContext.server;
-    // Use the repository-specific notification channel
-    const channelId = repoContext.notificationChannelId || 'pending';
+    // Prefer event-specific channel for pull requests
+    const channelId = await getEventChannelId(prisma, repoContext.id, 'pull_request', repoContext.notificationChannelId);
 
     if (channelId === 'pending') return { statusCode: 200, message: 'PR event ack, channel pending.', channelId: null, messageId: null };
 
@@ -545,8 +558,8 @@ function initializeWebServer(prisma, botClient) {
     const action = payload.action;
     const issue = payload.issue;
     const serverConfig = repoContext.server;
-    // Use the repository-specific notification channel
-    const channelId = repoContext.notificationChannelId || 'pending';
+    // Prefer event-specific channel for issues
+    const channelId = await getEventChannelId(prisma, repoContext.id, 'issues', repoContext.notificationChannelId);
 
     if (channelId === 'pending') return { statusCode: 200, message: 'Issue event ack, channel pending.', channelId: null, messageId: null };
 
@@ -604,8 +617,8 @@ function initializeWebServer(prisma, botClient) {
     if (payload.action !== 'created') return { statusCode: 200, message: 'Star event (unstarred) ack.', channelId: null, messageId: null };
     const repoUrl = payload.repository.html_url;
     const serverConfig = repoContext.server;
-    // Use the repository-specific notification channel
-    const channelId = repoContext.notificationChannelId || 'pending';
+    // Prefer event-specific channel for stars
+    const channelId = await getEventChannelId(prisma, repoContext.id, 'star', repoContext.notificationChannelId);
 
     if (channelId === 'pending') return { statusCode: 200, message: 'Star event ack, channel pending.', channelId: null, messageId: null };
 
@@ -655,12 +668,13 @@ function initializeWebServer(prisma, botClient) {
   }
 
   async function handleReleaseEvent(req, res, payload, prisma, botClient, repoContext) {
-    if (payload.action !== 'published' && payload.action !== 'released') return { statusCode: 200, message: 'Release event not handled.', channelId: null, messageId: null };
+    // Only handle the canonical 'published' action to avoid duplicate notifications
+    if (payload.action !== 'published') return { statusCode: 200, message: `Release event '${payload.action}' ignored (only 'published' is handled).`, channelId: null, messageId: null };
     const repoUrl = payload.repository.html_url;
     const release = payload.release;
     const serverConfig = repoContext.server;
-    // Use the repository-specific notification channel
-    const channelId = repoContext.notificationChannelId || 'pending';
+    // Prefer event-specific channel for releases
+    const channelId = await getEventChannelId(prisma, repoContext.id, 'release', repoContext.notificationChannelId);
 
     if (channelId === 'pending') return { statusCode: 200, message: 'Release event ack, channel pending.', channelId: null, messageId: null };
 
@@ -713,8 +727,8 @@ function initializeWebServer(prisma, botClient) {
     const repoUrl = payload.repository.html_url;
     const forkeeRepo = payload.forkee;
     const serverConfig = repoContext.server;
-    // Use the repository-specific notification channel
-    const channelId = repoContext.notificationChannelId || 'pending';
+    // Prefer event-specific channel for forks
+    const channelId = await getEventChannelId(prisma, repoContext.id, 'fork', repoContext.notificationChannelId);
 
     if (channelId === 'pending') return { statusCode: 200, message: 'Fork event ack, channel pending.', channelId: null, messageId: null };
 
@@ -766,9 +780,8 @@ function initializeWebServer(prisma, botClient) {
     const refType = payload.ref_type;
     const refName = payload.ref;
     const serverConfig = repoContext.server;
-    // For create events (new branch/tag), use the repository-specific notification channel
-    // The validatedRepositoryContext ensures we are in the right server and repository context.
-    const channelId = repoContext.notificationChannelId || 'pending';
+    // Prefer event-specific channel for create events
+    const channelId = await getEventChannelId(prisma, repoContext.id, 'create', repoContext.notificationChannelId);
 
     if (channelId === 'pending') return { statusCode: 200, message: 'Create event ack, channel pending.', channelId: null, messageId: null };
 
@@ -831,8 +844,8 @@ function initializeWebServer(prisma, botClient) {
     const refType = payload.ref_type;
     const refName = payload.ref;
     const serverConfig = repoContext.server;
-    // Use the repository-specific notification channel
-    const channelId = repoContext.notificationChannelId || 'pending';
+    // Prefer event-specific channel for delete events
+    const channelId = await getEventChannelId(prisma, repoContext.id, 'delete', repoContext.notificationChannelId);
 
     if (channelId === 'pending') return { statusCode: 200, message: 'Delete event ack, channel pending.', channelId: null, messageId: null };
 
@@ -885,8 +898,8 @@ function initializeWebServer(prisma, botClient) {
   async function handlePingEvent(req, res, payload, prisma, botClient, repoContext) {
     const repoUrl = payload.repository.html_url;
     const serverConfig = repoContext.server;
-    // Use the repository-specific notification channel
-    const channelId = repoContext.notificationChannelId || 'pending';
+    // Prefer event-specific channel for ping events
+    const channelId = await getEventChannelId(prisma, repoContext.id, 'ping', repoContext.notificationChannelId);
 
     if (channelId === 'pending') {
         console.warn(`Ping event for ${repoUrl}, but repository notification channel is pending.`);
