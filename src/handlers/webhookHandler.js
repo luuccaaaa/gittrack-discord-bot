@@ -262,16 +262,16 @@ function initializeWebServer(prisma, botClient) {
     }
   });
 
-  // Resolve channel for non-branch events with per-event override
-  async function getEventChannelId(prisma, repositoryId, eventType, fallbackChannelId) {
+  // Resolve channel and config for non-branch events with per-event override
+  async function getEventRouting(prisma, repositoryId, eventType, fallbackChannelId) {
     try {
       const mapping = await prisma.repositoryEventChannel.findFirst({
         where: { repositoryId, eventType }
       });
-      return mapping?.channelId || fallbackChannelId || 'pending';
+      return { channelId: mapping?.channelId || fallbackChannelId || 'pending', config: mapping?.config || null };
     } catch (e) {
-      console.error('getEventChannelId error:', e);
-      return fallbackChannelId || 'pending';
+      console.error('getEventRouting error:', e);
+      return { channelId: fallbackChannelId || 'pending', config: null };
     }
   }
 
@@ -293,8 +293,16 @@ function initializeWebServer(prisma, botClient) {
 
     // Use repoContext directly as it's the validated one for this webhook
     const serverConfig = repoContext.server;
-    // Prefer event-specific channel for issue comments
-    const channelId = await getEventChannelId(prisma, repoContext.id, 'issue_comment', repoContext.notificationChannelId);
+    // PR timeline comments arrive as issue_comment with issue.pull_request present
+    // Route PR conversation comments using pull_request mapping; route issue comments using issues mapping
+    const eventForRouting = isPR ? 'pull_request' : 'issues';
+    const { channelId, config } = await getEventRouting(prisma, repoContext.id, eventForRouting, repoContext.notificationChannelId);
+
+    // Require explicit enablement: PR/Issue comments must be enabled in the respective config
+    if (!config || !config.actionsEnabled || !config.actionsEnabled['comments']) {
+      const scope = isPR ? 'PR' : 'issue';
+      return { statusCode: 200, message: `${scope} comments disabled or not configured; skipping.`, channelId: null, messageId: null };
+    }
 
     if (channelId === 'pending') {
         console.warn(`Notification channel pending for repository ${repoUrl} on server ${serverConfig.guildId}`);
@@ -492,7 +500,16 @@ function initializeWebServer(prisma, botClient) {
     const pr = payload.pull_request;
     const serverConfig = repoContext.server;
     // Prefer event-specific channel for pull requests
-    const channelId = await getEventChannelId(prisma, repoContext.id, 'pull_request', repoContext.notificationChannelId);
+    const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'pull_request', repoContext.notificationChannelId);
+
+    // Require explicit enablement: if configured and flag missing or false, skip; if no config, skip
+    if (config && config.actionsEnabled) {
+      if (!config.actionsEnabled[action]) {
+        return { statusCode: 200, message: `Pull request action '${action}' disabled by config.`, channelId: null, messageId: null };
+      }
+    } else {
+      return { statusCode: 200, message: 'Pull request event not configured; skipping.', channelId: null, messageId: null };
+    }
 
     if (channelId === 'pending') return { statusCode: 200, message: 'PR event ack, channel pending.', channelId: null, messageId: null };
 
@@ -556,10 +573,22 @@ function initializeWebServer(prisma, botClient) {
   async function handleIssuesEvent(req, res, payload, prisma, botClient, repoContext) {
     const repoUrl = payload.repository.html_url;
     const action = payload.action;
+    // Treat 'unassigned' under 'assigned' and 'unlabeled' under 'labeled' in config
+    const effectiveAction = action === 'unassigned' ? 'assigned' : (action === 'unlabeled' ? 'labeled' : action);
     const issue = payload.issue;
     const serverConfig = repoContext.server;
     // Prefer event-specific channel for issues
-    const channelId = await getEventChannelId(prisma, repoContext.id, 'issues', repoContext.notificationChannelId);
+    const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'issues', repoContext.notificationChannelId);
+
+    // Require explicit enablement: if configured and flag missing or false, skip
+    if (config && config.actionsEnabled) {
+      if (!config.actionsEnabled[effectiveAction]) {
+        return { statusCode: 200, message: `Issue action '${action}' disabled by config.`, channelId: null, messageId: null };
+      }
+    } else {
+      // No config present for issues: treat as not configured → skip
+      return { statusCode: 200, message: 'Issue event not configured; skipping.', channelId: null, messageId: null };
+    }
 
     if (channelId === 'pending') return { statusCode: 200, message: 'Issue event ack, channel pending.', channelId: null, messageId: null };
 
@@ -614,11 +643,15 @@ function initializeWebServer(prisma, botClient) {
   }
 
   async function handleStarEvent(req, res, payload, prisma, botClient, repoContext) {
-    if (payload.action !== 'created') return { statusCode: 200, message: 'Star event (unstarred) ack.', channelId: null, messageId: null };
+    const action = payload.action; // 'created' (starred) or 'deleted' (unstarred)
     const repoUrl = payload.repository.html_url;
     const serverConfig = repoContext.server;
     // Prefer event-specific channel for stars
-    const channelId = await getEventChannelId(prisma, repoContext.id, 'star', repoContext.notificationChannelId);
+    const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'star', repoContext.notificationChannelId);
+
+    if (!config || !config.actionsEnabled || !config.actionsEnabled[action]) {
+      return { statusCode: 200, message: `Star action '${action}' disabled by config.`, channelId: null, messageId: null };
+    }
 
     if (channelId === 'pending') return { statusCode: 200, message: 'Star event ack, channel pending.', channelId: null, messageId: null };
 
@@ -633,16 +666,21 @@ function initializeWebServer(prisma, botClient) {
         
         const channel = await botClient.channels.fetch(channelId);
         if (channel && channel.isTextBased()) {
+            const isStar = action === 'created';
+            const title = isStar ? `⭐ New Star for ${payload.repository.name}!` : `💔 Star Removed from ${payload.repository.name}`;
+            const description = isStar
+              ? `${payload.sender.login} starred [${payload.repository.full_name}](${repoUrl}).`
+              : `${payload.sender.login} unstarred [${payload.repository.full_name}](${repoUrl}).`;
             const embed = {
-                color: 0xFFAC33,
+                color: isStar ? 0xFFAC33 : 0x6B7280,
                 author: { name: payload.sender.login, icon_url: payload.sender.avatar_url, url: payload.sender.html_url },
-                title: `⭐ New Star for ${payload.repository.name}!`,
+                title,
                 url: repoUrl,
                 fields: [
                     { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: true },
                     { name: 'Total Stars', value: payload.repository.stargazers_count.toString(), inline: true },
                 ],
-                description: `${payload.sender.login} starred [${payload.repository.full_name}](${repoUrl}).`,
+                description,
                 timestamp: new Date().toISOString(),
                 footer: { text: `GitHub Star Event` }
             };
@@ -674,7 +712,11 @@ function initializeWebServer(prisma, botClient) {
     const release = payload.release;
     const serverConfig = repoContext.server;
     // Prefer event-specific channel for releases
-    const channelId = await getEventChannelId(prisma, repoContext.id, 'release', repoContext.notificationChannelId);
+    const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'release', repoContext.notificationChannelId);
+
+    if (!config || !config.actionsEnabled || !config.actionsEnabled[payload.action]) {
+      return { statusCode: 200, message: `Release action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
+    }
 
     if (channelId === 'pending') return { statusCode: 200, message: 'Release event ack, channel pending.', channelId: null, messageId: null };
 
@@ -728,7 +770,11 @@ function initializeWebServer(prisma, botClient) {
     const forkeeRepo = payload.forkee;
     const serverConfig = repoContext.server;
     // Prefer event-specific channel for forks
-    const channelId = await getEventChannelId(prisma, repoContext.id, 'fork', repoContext.notificationChannelId);
+    const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'fork', repoContext.notificationChannelId);
+
+    if (!config || !config.actionsEnabled || !config.actionsEnabled[payload.action]) {
+      return { statusCode: 200, message: `Fork action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
+    }
 
     if (channelId === 'pending') return { statusCode: 200, message: 'Fork event ack, channel pending.', channelId: null, messageId: null };
 
@@ -781,7 +827,11 @@ function initializeWebServer(prisma, botClient) {
     const refName = payload.ref;
     const serverConfig = repoContext.server;
     // Prefer event-specific channel for create events
-    const channelId = await getEventChannelId(prisma, repoContext.id, 'create', repoContext.notificationChannelId);
+    const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'create', repoContext.notificationChannelId);
+
+    if (!config || !config.actionsEnabled || !config.actionsEnabled[payload.action]) {
+      return { statusCode: 200, message: `Create action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
+    }
 
     if (channelId === 'pending') return { statusCode: 200, message: 'Create event ack, channel pending.', channelId: null, messageId: null };
 
@@ -845,7 +895,11 @@ function initializeWebServer(prisma, botClient) {
     const refName = payload.ref;
     const serverConfig = repoContext.server;
     // Prefer event-specific channel for delete events
-    const channelId = await getEventChannelId(prisma, repoContext.id, 'delete', repoContext.notificationChannelId);
+    const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'delete', repoContext.notificationChannelId);
+
+    if (!config || !config.actionsEnabled || !config.actionsEnabled[payload.action]) {
+      return { statusCode: 200, message: `Delete action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
+    }
 
     if (channelId === 'pending') return { statusCode: 200, message: 'Delete event ack, channel pending.', channelId: null, messageId: null };
 
@@ -899,7 +953,11 @@ function initializeWebServer(prisma, botClient) {
     const repoUrl = payload.repository.html_url;
     const serverConfig = repoContext.server;
     // Prefer event-specific channel for ping events
-    const channelId = await getEventChannelId(prisma, repoContext.id, 'ping', repoContext.notificationChannelId);
+    const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'ping', repoContext.notificationChannelId);
+
+    if (!config || !config.actionsEnabled || !config.actionsEnabled[payload.action]) {
+      return { statusCode: 200, message: `Ping action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
+    }
 
     if (channelId === 'pending') {
         console.warn(`Ping event for ${repoUrl}, but repository notification channel is pending.`);

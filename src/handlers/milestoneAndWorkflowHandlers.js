@@ -12,18 +12,23 @@ async function handleMilestoneEvent(req, res, payload, prisma, botClient, repoCo
   console.log(`Milestone "${milestoneTitle}" ${action} in ${repoUrl} by ${username}`);
 
   try {
-    // Only notify for important milestone actions
-    if (!['created', 'closed', 'opened'].includes(action)) {
-      return { statusCode: 200, message: `Milestone ${action} event acknowledged.`, channelId: null, messageId: null };
-    }
-
     // Use repoContext directly as it's the validated one for this webhook
     const serverConfig = repoContext.server;
-    // Prefer event-specific channel for milestone events
+    // Prefer event-specific channel for milestone events and fetch config
     const mapping = await prisma.repositoryEventChannel.findFirst({
       where: { repositoryId: repoContext.id, eventType: 'milestone' }
     });
     const channelId = mapping?.channelId || repoContext.notificationChannelId || 'pending';
+    const config = mapping?.config || null;
+
+    // Honor per-event action filter if configured, otherwise default important actions
+    if (config && config.actionsEnabled && Object.prototype.hasOwnProperty.call(config.actionsEnabled, action)) {
+      if (!config.actionsEnabled[action]) {
+        return { statusCode: 200, message: `Milestone action '${action}' disabled by config.`, channelId: null, messageId: null };
+      }
+    } else if (!['created', 'closed', 'opened'].includes(action)) {
+      return { statusCode: 200, message: `Milestone ${action} event acknowledged.`, channelId: null, messageId: null };
+    }
 
     if (channelId === 'pending') {
         console.warn(`Notification channel pending for repository ${repoUrl} on server ${serverConfig.guildId}`);

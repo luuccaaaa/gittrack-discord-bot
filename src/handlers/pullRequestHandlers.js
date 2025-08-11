@@ -3,6 +3,18 @@
  * This file contains handlers for pull request review and review comment events
  */
 
+// Helper: resolve routing and config for pull_request event
+async function getPullRequestRouting(prisma, repoContext, fallbackChannelId) {
+  try {
+    const mapping = await prisma.repositoryEventChannel.findFirst({
+      where: { repositoryId: repoContext.id, eventType: 'pull_request' }
+    });
+    return { channelId: mapping?.channelId || fallbackChannelId || 'pending', config: mapping?.config || null };
+  } catch (e) {
+    return { channelId: fallbackChannelId || 'pending', config: null };
+  }
+}
+
 /**
  * Handles pull request review events
  * Event for when a PR review is submitted, edited, or dismissed
@@ -24,8 +36,15 @@ async function handlePRReviewEvent(req, res, payload, prisma, botClient, repoCon
   }
 
   const serverConfig = repoContext.server;
-  // Use the repository-specific notification channel
-  const channelId = repoContext.notificationChannelId || 'pending';
+  // Route using pull_request mapping and honor config
+  const { channelId, config } = await getPullRequestRouting(prisma, repoContext, repoContext.notificationChannelId);
+
+  // If this is a comment-only review notification and comments are not explicitly enabled, skip
+  if (reviewState === 'commented') {
+    if (!config || !config.actionsEnabled || !config.actionsEnabled['comments']) {
+      return { statusCode: 200, message: `PR review comments disabled by config.`, channelId: null, messageId: null };
+    }
+  }
 
   if (channelId === 'pending') {
     console.warn(`Notification channel pending for repository ${repoUrl} on server ${serverConfig.guildId}`);
@@ -134,7 +153,13 @@ async function handlePRReviewCommentEvent(req, res, payload, prisma, botClient, 
   }
 
   const serverConfig = repoContext.server;
-  const channelId = repoContext.notificationChannelId || 'pending';
+  // Route using pull_request mapping and honor config
+  const { channelId, config } = await getPullRequestRouting(prisma, repoContext, repoContext.notificationChannelId);
+
+  // Require explicit enablement of PR comments
+  if (!config || !config.actionsEnabled || !config.actionsEnabled['comments']) {
+    return { statusCode: 200, message: `PR comments disabled by config.`, channelId: null, messageId: null };
+  }
 
   if (channelId === 'pending') {
     console.warn(`Notification channel pending for repository ${repoUrl} on server ${serverConfig.guildId}`);

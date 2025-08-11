@@ -61,12 +61,23 @@ GitTrack is an open-source Discord bot that monitors GitHub repository activity 
 | `/unlink` | Remove linked repository | `/unlink url:https://github.com/user/repo branch:main channel:#notifications` |
 | `/remove-repo` | Remove repository from tracking | `/remove-repo url:https://github.com/user/repo` |
 | `/set-default-channel` | Set default notification channel | `/set-default-channel repository:https://github.com/user/repo channel:#notifications` |
+| `/set-event-channel` | Route a non-branch event to a channel | `/set-event-channel repository:<repo> event:issues channel:#notifications` |
+| `/edit-event` | Configure event filters (issues, PRs, etc.) | `/edit-event repository:<repo> event:issues` |
 | `/status` | Check server configuration and limits | `/status` |
 | `/reset` | Reset all bot data (Admin only) | `/reset confirm:true` |
 | `/ping` | Check if bot is responsive | `/ping` |
 | `/help` | Display help information | `/help` |
 
 ## 🔧 Configuration
+### Per-event routing and filters
+
+- Use `/set-event-channel` to route a specific event (e.g. `issues`, `pull_request`, `release`, `star`, `fork`, `create`, `delete`, `milestone`, `ping`) to a channel.
+- Use `/edit-event` to toggle which sub-actions notify. Highlights:
+  - **Issues**: toggle actions like `opened`, `closed`, `reopened`, `assigned` (also controls `unassigned`), `labeled` (also controls `unlabeled`), and a dedicated `comments` toggle for issue comments.
+  - **Pull Requests**: toggle actions like `opened`, `closed`, `reopened`, plus a `comments` toggle which controls PR conversation comments, PR review comments, and review state "commented".
+  - Other events (e.g. `star`, `release`, `fork`, `create`, `delete`, `ping`) can be enabled per action. Notifications only send when explicitly enabled.
+- If no event-specific route exists, filters can still be edited; a mapping will be created using the repository's default channel on first toggle.
+
 
 ### Discord Bot Setup
 
