@@ -9,7 +9,6 @@ const ROUTABLE_EVENTS = [
   'create',
   'delete',
   'pull_request',
-  'issue_comment',
   'milestone',
   'ping',
 ];
@@ -115,18 +114,24 @@ module.exports = {
         return;
       }
 
-      const existing = await prisma.repositoryEventChannel.findFirst({
+      let existing = await prisma.repositoryEventChannel.findFirst({
         where: { repositoryId: repository.id, eventType }
       });
+      // Legacy support: if user tries to remove issue_comment, remove issues mapping
+      if (!existing && eventType === 'issue_comment') {
+        existing = await prisma.repositoryEventChannel.findFirst({
+          where: { repositoryId: repository.id, eventType: 'issues' }
+        });
+      }
 
       if (!existing) {
-        const embed = new EmbedBuilder()
+       const embed = new EmbedBuilder()
           .setColor(0xF59E0B)
           .setTitle('No Event Route Found')
           .setDescription('There is no event-specific routing configured for this selection.')
           .addFields(
             { name: 'Repository', value: repository.url, inline: false },
-            { name: 'Event', value: `\`${eventType}\``, inline: true }
+            { name: 'Event', value: `\`${eventType === 'issue_comment' ? 'issues (comments)' : eventType}\``, inline: true }
           )
           .setTimestamp();
         await interaction.editReply({ embeds: [embed] });

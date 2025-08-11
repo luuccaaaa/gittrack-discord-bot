@@ -9,7 +9,6 @@ const ROUTABLE_EVENTS = [
   { name: 'create', value: 'create' },
   { name: 'delete', value: 'delete' },
   { name: 'pull_request', value: 'pull_request' },
-  { name: 'issue_comment', value: 'issue_comment' },
   { name: 'milestone', value: 'milestone' },
   { name: 'ping', value: 'ping' },
 ];

@@ -58,6 +58,7 @@ model RepositoryEventChannel {
   repositoryId  String
   eventType     String      // e.g., "issues", "release", "star", etc.
   channelId     String
+  config        Json?       // Optional per-event configuration (e.g., action filters)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
