@@ -98,6 +98,18 @@ module.exports = {
           });
           deletionStats.branches = deletedBranches.count;
 
+          // Then delete all repository event channel mappings for this guild
+          const deletedEventChannels = await prisma.repositoryEventChannel.deleteMany({
+            where: {
+              repository: {
+                server: {
+                  guildId: interaction.guildId
+                }
+              }
+            }
+          });
+          deletionStats.eventChannels = deletedEventChannels.count;
+
           // Then delete all repositories for this guild
           const deletedRepos = await prisma.repository.deleteMany({
             where: {
@@ -115,7 +127,8 @@ module.exports = {
             .setDescription(`The bot has been successfully reset for this server.`)
             .addFields(
               { name: 'Repositories Removed', value: `${deletionStats.repositories}`, inline: true },
-              { name: 'Branch Configurations Removed', value: `${deletionStats.branches}`, inline: true }
+              { name: 'Branch Configurations Removed', value: `${deletionStats.branches}`, inline: true },
+              { name: 'Event Channel Mappings Removed', value: `${deletionStats.eventChannels}` , inline: true }
             )
             .setFooter({ text: `Reset performed by ${interaction.user.tag}` })
             .setTimestamp();

@@ -71,6 +71,13 @@ module.exports = {
         trackedBranchCount = deleteResult.count;
       }
 
+      // Then delete event channel mappings for this repository
+      const deletedEventChannels = await prisma.repositoryEventChannel.deleteMany({
+        where: {
+          repositoryId: repository.id
+        }
+      });
+
       // Then delete the repository itself
       await prisma.repository.delete({
         where: {
@@ -90,7 +97,7 @@ module.exports = {
           },
           {
             name: '🧹 Cleanup',
-            value: `${trackedBranchCount} branch tracking configuration(s) removed`,
+            value: `${trackedBranchCount} branch tracking configuration(s) removed, ${deletedEventChannels.count} event mapping(s) removed`,
             inline: true
           }
         ],
