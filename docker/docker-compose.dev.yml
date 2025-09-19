@@ -20,7 +20,8 @@ services:
       # Hot reloading: Mount source code for live updates
       - ..:/usr/src/app
       - /usr/src/app/node_modules
-    command: npm run dev
+    command: >
+      sh -c "npx prisma db push && npm run dev"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
