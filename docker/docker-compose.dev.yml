@@ -12,6 +12,7 @@ services:
       - PORT=3000
     ports:
       - "3000:3000"
+      - "5555:5555"
     depends_on:
       postgres:
         condition: service_healthy
@@ -21,7 +22,7 @@ services:
       - ..:/usr/src/app
       - /usr/src/app/node_modules
     command: >
-      sh -c "npx prisma db push && npm run dev"
+      sh -c "npx prisma db push && (npm run dev & npx prisma studio --browser none) && wait"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
