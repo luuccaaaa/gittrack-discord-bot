@@ -47,18 +47,6 @@ docker-compose -f docker/docker-compose.dev.yml up -d
 echo "⏳ Waiting for services to be ready..."
 sleep 10
 
-# Setup database schema
-echo "🗄️ Setting up database schema..."
-docker-compose -f docker/docker-compose.dev.yml exec bot sh -c "
-  if [ -d 'prisma/migrations' ] && [ \"\$(ls -A prisma/migrations)\" ]; then
-    echo 'Using migrations...'
-    npx prisma migrate deploy
-  else
-    echo 'No migrations found, using db push...'
-    npx prisma db push
-  fi
-"
-
 # Check if services are running
 echo "🔍 Checking service status..."
 docker-compose -f docker/docker-compose.dev.yml ps
