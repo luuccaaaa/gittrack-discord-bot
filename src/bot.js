@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Partials, Collection, Routes, REST } = require('discord.js');
+const {Events, Client, GatewayIntentBits, Partials, Collection, Routes, REST } = require('discord.js');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -97,7 +97,7 @@ async function initializeBot(prisma) {
     }
   });
 
-  client.once('ready', async () => {
+  client.once(Events.ClientReady, async () => {
     console.log(`Logged in as ${client.user.tag}!`);
     console.log(`Bot is in ${client.guilds.cache.size} servers.`);
 
