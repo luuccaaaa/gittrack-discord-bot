@@ -53,4 +53,5 @@ docker-compose -f docker/docker-compose.dev.yml ps
 
 echo "✅ GitTrack Discord Bot deployed successfully!"
 echo "🌐 Bot is running on http://localhost:3000"
+echo "🗄️ Prisma Studio is running on http://localhost:5555"
 echo "📊 Check logs with: docker-compose -f docker/docker-compose.dev.yml logs -f bot" 
