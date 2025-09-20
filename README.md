@@ -14,15 +14,17 @@ GitTrack is an open-source Discord bot that monitors GitHub repository activity 
   <img src="https://img.shields.io/badge/Discord-Add%20to%20Server-7289DA?style=for-the-badge&logo=discord&logoColor=white" alt="Add to Discord" />
 </a>
 
-**Why self-host?** This codebase is completely open source. You're free to self-host, customize, contribute, or deploy on your own infrastructure.
+Also you're free to self-host, customize, contribute, or deploy on your own infrastructure.
 
 ## ✨ Features
 
 - **Real-time GitHub notifications** - Push events, pull requests, issues, releases, and more
-- **Flexible branch tracking** - Monitor specific branches or all branches per repository
-- **Channel routing** - Route notifications to different Discord channels
+- **Flexible branch tracking** - Monitor specific branches or whole prefixes with wildcard patterns
+- **Channel routing** - Route notifications to different Discord channels (per branch and per event)
+- **Event filters** - Toggle issue, pull-request, and other event actions directly from Discord
 - **Webhook security** - Secure webhook handling with signature verification
 - **Configurable limits** - Customize repository and channel limits via environment variables
+- **Operational insights** - Built-in health and delivery metrics endpoints for monitoring
 - **Modern tech stack** - Discord.js 14, Prisma, PostgreSQL
 - **Docker support** - Easy deployment with Docker and Docker Compose
 
@@ -30,25 +32,26 @@ GitTrack is an open-source Discord bot that monitors GitHub repository activity 
 
 ### Prerequisites
 
-- Node.js 18+ (or Docker)
-- PostgreSQL database
+- Docker & Docker Compose
 - Discord Bot Token & Client ID
-- **For local development**: ngrok (recommended for webhook testing)
+- PostgreSQL connection details (the provided Compose stack spins one up automatically)
+- A public URL (e.g., via ngrok) if GitHub needs to reach your local machine
 
-### Docker Deployment
+### Deploy with Docker
 
-1. **Clone and configure**
+1. Clone and configure the project:
    ```bash
    git clone https://github.com/luuccaaaa/gittrack-discord-bot.git
    cd gittrack-discord-bot
    cp .env.example .env
    # Edit .env with your configuration
    ```
-
-2. **Deploy**
+2. Run the deployment script:
    ```bash
    ./scripts/deploy.sh
    ```
+
+The script validates your `.env`, builds the containers, and starts PostgreSQL, Prisma Studio, and the bot. Prefer to manage containers manually? Use `docker-compose -f docker/docker-compose.dev.yml up -d`.
 
 
 
@@ -62,6 +65,7 @@ GitTrack is an open-source Discord bot that monitors GitHub repository activity 
 | `/remove-repo` | Remove repository from tracking | `/remove-repo url:https://github.com/user/repo` |
 | `/set-default-channel` | Set default notification channel | `/set-default-channel repository:https://github.com/user/repo channel:#notifications` |
 | `/set-event-channel` | Route a non-branch event to a channel | `/set-event-channel repository:<repo> event:issues channel:#notifications` |
+| `/remove-event-channel` | Remove an event-to-channel override | `/remove-event-channel repository:<repo> event:issues` |
 | `/edit-event` | Configure event filters (issues, PRs, etc.) | `/edit-event repository:<repo> event:issues` |
 | `/status` | Check server configuration and limits | `/status` |
 | `/reset` | Reset all bot data (Admin only) | `/reset confirm:true` |
@@ -69,15 +73,6 @@ GitTrack is an open-source Discord bot that monitors GitHub repository activity 
 | `/help` | Display help information | `/help` |
 
 ## 🔧 Configuration
-### Per-event routing and filters
-
-- Use `/set-event-channel` to route a specific event (e.g. `issues`, `pull_request`, `release`, `star`, `fork`, `create`, `delete`, `milestone`, `ping`) to a channel.
-- Use `/edit-event` to toggle which sub-actions notify. Highlights:
-  - **Issues**: toggle actions like `opened`, `closed`, `reopened`, `assigned` (also controls `unassigned`), `labeled` (also controls `unlabeled`), and a dedicated `comments` toggle for issue comments.
-  - **Pull Requests**: toggle actions like `opened`, `closed`, `reopened`, plus a `comments` toggle which controls PR conversation comments, PR review comments, and review state "commented".
-  - Other events (e.g. `star`, `release`, `fork`, `create`, `delete`, `ping`) can be enabled per action. Notifications only send when explicitly enabled.
-- If no event-specific route exists, filters can still be edited; a mapping will be created using the repository's default channel on first toggle.
-
 
 ### Discord Bot Setup
 
@@ -105,10 +100,12 @@ GitTrack is an open-source Discord bot that monitors GitHub repository activity 
 | `DISCORD_TOKEN` | Discord bot token | Yes | - |
 | `CLIENT_ID` | Discord bot client ID | Yes | - |
 | `DATABASE_URL` | PostgreSQL connection string | Yes | - |
-| `WEBHOOK_URL` | Public webhook URL for GitHub | Yes | - |
-| `PUBLIC_URL` | Public base URL of your bot | Yes | - |
+| `WEBHOOK_URL` | Fully qualified webhook URL (overrides `PUBLIC_URL`) | No | Derived from `PUBLIC_URL` |
+| `PUBLIC_URL` | Public base URL (used when `WEBHOOK_URL` is not set) | No | - (required if `WEBHOOK_URL` is unset) |
+| `PORT` | Local port for the Express webhook server | No | 3000 |
 | `MAX_REPOS_ALLOWED` | Max repositories per server | No | 10 |
-| `MAX_NOTIFICATION_CHANNELS_ALLOWED` | Max channels per server | No | unlimited |
+| `MAX_NOTIFICATION_CHANNELS_ALLOWED` | Max distinct branch notification channels | No | Unlimited |
+| `GITHUB_TOKEN` | Enables branch autocomplete for private repositories | No | Not set |
 
 
 
@@ -117,46 +114,46 @@ GitTrack is an open-source Discord bot that monitors GitHub repository activity 
 
 ```
 Bot/
-├── src/                    # All source code
-│   ├── commands/          # Discord slash commands
-│   ├── functions/         # Utility functions (limits, permissions, branch matching)
-│   ├── handlers/          # Webhook and event handlers
-│   ├── bot.js             # Discord bot setup
-│   └── index.js           # Application entry point
-├── prisma/                # Database schema and migrations
-├── config/                # Configuration files
-├── docker/                # Docker deployment files
-├── scripts/               # Deployment scripts
-├── docs/                  # Development documentation
-└── README.md              # This file
+├── src/
+│   ├── index.js              # Entry point – boots Prisma, Discord client, and Express server
+│   ├── bot.js                # Discord client initialisation and slash-command routing
+│   ├── commands/             # Slash command definitions (/setup, /link, /status, ...)
+│   ├── handlers/
+│   │   ├── webhookHandler.js # GitHub webhook router and validation
+│   │   ├── checksHandlers.js
+│   │   ├── milestoneAndWorkflowHandlers.js
+│   │   └── pullRequestHandlers.js
+│   └── functions/
+│       ├── branchMatcher.js
+│       ├── limitChecker.js
+│       └── permissionChecker.js
+├── prisma/
+│   ├── schema.prisma         # Data model (Server, Repository, TrackedBranch, RepositoryEventChannel, logs)
+│   └── init.sql
+├── docker/                   # Docker Compose definitions
+├── scripts/                  # Utility scripts (deploy.sh, etc.)
+├── dashboard-ui/             # Placeholder for dashboard experiments
+├── config/                   # Local tooling configuration (nodemon.json)
+└── docs/                     # Developer documentation
 ```
 
 ### Key Components
 
-- **Discord Bot** (`src/bot.js`) - Handles Discord interactions and slash commands
-- **Webhook Handler** (`src/handlers/webhookHandler.js`) - Processes GitHub webhook events
-- **Limit Checker** (`src/functions/limitChecker.js`) - Manages configurable limits
-- **Database Layer** (`prisma/`) - Manages data persistence with Prisma ORM
+- **Discord Bot** (`src/bot.js`) – Loads slash commands, registers them globally, and executes actions after permission checks.
+- **Express Webhook Server** (`src/handlers/webhookHandler.js`) – Validates GitHub signatures, routes events, and records errors/system logs.
+- **Event Routing** (`src/commands/set-event-channel.js`, `src/commands/edit-event.js`) – Lets admins configure per-event channels and action filters directly from Discord.
+- **Limit Management** (`src/functions/limitChecker.js`) – Enforces repository/channel caps using environment variables and surfaces status via `/status`.
+- **Data Persistence** (`prisma/schema.prisma`) – PostgreSQL models for servers, repositories, tracked branches, event channels, and logging.
+- **Observability** – `GET /health` for uptime checks and `GET /api/message-counts` for delivery metrics.
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guidelines](docs/CONTRIBUTING.md) for details.
+We welcome contributions! Please read the updated [Contributing Guide](docs/CONTRIBUTING.md) for the full workflow, coding standards, and pull-request checklist. Highlights:
 
-### Development Setup
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Make your changes
-4. Commit your changes: `git commit -m 'Add amazing feature'`
-5. Push to the branch: `git push origin feature/amazing-feature`
-6. Open a Pull Request
-
-### Code Style
-
-- Follow the existing code style
-- Use meaningful variable and function names
-- Add comments for complex logic
-- Include error handling
+- Use feature branches and Conventional Commits (e.g., `feat:`, `fix:`, `docs:`).
+- Keep slash commands and documentation in sync with behavioural changes.
+- Verify changes by running the container stack (`./scripts/deploy.sh` or `docker-compose -f docker/docker-compose.dev.yml up`).
+- Push Prisma schema changes with `npx prisma db push` and regenerate the client when you modify the data model.
 
 ## 📝 License
 
@@ -165,8 +162,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🆘 Support
 
 - **Issues**: [GitHub Issues](https://github.com/luuccaaaa/gittrack-discord-bot/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/luuccaaaa/gittrack-discord-bot/discussions)
 - **Email**: support@gittrack.me
+- **Community Discord**: [Join the GitTrack server](https://discord.gg/4GNcUDNbsC)
 
 ## 🙏 Acknowledgments
 
