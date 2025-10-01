@@ -10,7 +10,6 @@ const ROUTABLE_EVENTS = [
   'delete',
   'pull_request',
   'milestone',
-  'ping',
 ];
 
 module.exports = {
@@ -138,14 +137,18 @@ module.exports = {
         return;
       }
 
-      await prisma.repositoryEventChannel.delete({ where: { id: existing.id } });
+      // Instead of deleting, revert to default sentinel so it follows the repo default channel
+      await prisma.repositoryEventChannel.update({
+        where: { id: existing.id },
+        data: { channelId: 'default', config: { ...(existing.config || {}), explicitChannel: false } }
+      });
 
       const displayUrl = repository.url.endsWith('.git') ? repository.url.slice(0, -4) : repository.url;
       const formattedEvent = eventType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
       const embed = new EmbedBuilder()
         .setColor(0x10B981)
         .setTitle('Event Routing Removed')
-        .setDescription('The event-to-channel route has been removed:')
+        .setDescription('The event-to-channel route has been removed and will fall back to the repository default channel:')
         .addFields(
           { name: 'Repository', value: displayUrl, inline: false },
           { name: 'Event', value: `\`${formattedEvent}\``, inline: true }

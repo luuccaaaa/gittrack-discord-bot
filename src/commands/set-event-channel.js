@@ -10,7 +10,6 @@ const ROUTABLE_EVENTS = [
   { name: 'delete', value: 'delete' },
   { name: 'pull_request', value: 'pull_request' },
   { name: 'milestone', value: 'milestone' },
-  { name: 'ping', value: 'ping' },
 ];
 
 module.exports = {
@@ -120,7 +119,7 @@ module.exports = {
       if (existing) {
         await prisma.repositoryEventChannel.update({
           where: { id: existing.id },
-          data: { channelId: channel.id }
+          data: { channelId: channel.id, config: { ...(existing.config || {}), explicitChannel: true } }
         });
         statusText = 'Updated';
       } else {
@@ -128,7 +127,8 @@ module.exports = {
           data: {
             repositoryId: repository.id,
             eventType,
-            channelId: channel.id
+            channelId: channel.id,
+            config: { explicitChannel: true }
           }
         });
       }

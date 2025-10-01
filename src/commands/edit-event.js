@@ -10,7 +10,6 @@ const ROUTABLE_EVENTS = [
   { name: 'create', value: 'create' },
   { name: 'delete', value: 'delete' },
   { name: 'milestone', value: 'milestone' },
-  { name: 'ping', value: 'ping' },
 ];
 
 // Minimal action presets per event (extendable)
@@ -22,8 +21,7 @@ const EVENT_ACTION_PRESETS = {
   fork: ['created'],
   create: ['created'],
   delete: ['deleted'],
-  milestone: ['created', 'closed', 'opened'],
-  ping: ['ping']
+  milestone: ['created', 'closed', 'opened']
 };
 
 function formatRepoUrlForDisplay(url) {
@@ -103,9 +101,26 @@ module.exports = {
         return;
       }
 
-      const mapping = await prisma.repositoryEventChannel.findFirst({
+      let mapping = await prisma.repositoryEventChannel.findFirst({
         where: { repositoryId: repository.id, eventType }
       });
+
+      // If mapping doesn't exist yet, create one upfront with defaults so the first interaction works
+      if (!mapping) {
+        const supportedActions = EVENT_ACTION_PRESETS[eventType] || [];
+        const defaultActions = supportedActions.reduce((acc, action) => {
+          acc[action] = action === 'comments' ? false : true;
+          return acc;
+        }, {});
+        mapping = await prisma.repositoryEventChannel.create({
+          data: {
+            repositoryId: repository.id,
+            eventType,
+            channelId: 'default',
+            config: { actionsEnabled: defaultActions, explicitChannel: false }
+          }
+        });
+      }
 
       const displayUrl = formatRepoUrlForDisplay(repository.url);
       const supportedActions = EVENT_ACTION_PRESETS[eventType] || [];
@@ -122,7 +137,7 @@ module.exports = {
         .addFields(
           { name: 'Repository', value: displayUrl, inline: false },
           { name: 'Event', value: `\`${eventType}\``, inline: true },
-          { name: 'Channel', value: mapping ? `<#${mapping.channelId}>` : (repository.notificationChannelId ? `<#${repository.notificationChannelId}> (default)` : 'Not set (default channel pending)'), inline: true }
+          { name: 'Channel', value: (mapping && mapping.channelId && mapping.channelId !== 'default') ? `<#${mapping.channelId}>` : (repository.notificationChannelId ? `<#${repository.notificationChannelId}> (default)` : 'Not set (default channel pending)'), inline: true }
         )
         .setFooter({ text: 'Changes are saved immediately when you toggle buttons.' })
         .setTimestamp();
@@ -195,8 +210,8 @@ module.exports = {
             data: {
               repositoryId: repository.id,
               eventType,
-              channelId: repository.notificationChannelId || 'pending',
-              config: { actionsEnabled }
+              channelId: 'default',
+              config: { actionsEnabled, explicitChannel: false }
             }
           });
         }
