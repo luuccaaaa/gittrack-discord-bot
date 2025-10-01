@@ -107,6 +107,27 @@ async function initializeBot(prisma) {
     // Update server status based on bot presence
     await updateServerStatus(client.guilds.cache, prisma);
 
+    // Sum approximate member counts across all guilds
+    try {
+      const fetchedGuilds = await Promise.all(
+        client.guilds.cache.map(async (g) => {
+          try {
+            return await g.fetch({ withCounts: true });
+          } catch (e) {
+            console.warn(`Could not fetch counts for guild ${g.id}:`, e.message);
+            return g;
+          }
+        })
+      );
+      const totalApproxMembers = fetchedGuilds.reduce((sum, g) => {
+        const count = typeof g.approximateMemberCount === 'number' ? g.approximateMemberCount : 0;
+        return sum + count;
+      }, 0);
+      console.log(`Approximate total members across guilds: ${totalApproxMembers}`);
+    } catch (e) {
+      console.error('Failed to sum approximate member counts:', e);
+    }
+
     const clientId = process.env.CLIENT_ID;
     
     if (!clientId) {
