@@ -10,7 +10,7 @@ GitTrack is an open-source Discord bot that monitors GitHub repository activity 
 
 **GitTrack is available as a hosted service at [gittrack.me](https://gittrack.me) - completely free!**
 
-<a href="https://discord.com/api/oauth2/authorize?client_id=1373397506909798410&permissions=277025392640&scope=bot%20applications.commands" target="_blank">
+<a href="https://discord.com/api/oauth2/authorize?client_id=1373397506909798410&permissions=277025410048&scope=bot%20applications.commands" target="_blank">
   <img src="https://img.shields.io/badge/Discord-Add%20to%20Server-7289DA?style=for-the-badge&logo=discord&logoColor=white" alt="Add to Discord" />
 </a>
 
@@ -78,7 +78,7 @@ The script validates your `.env`, builds the containers, and starts PostgreSQL, 
 
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
 2. Create application → Bot section → Copy token & client ID
-3. Enable permissions: Send Messages, Use Slash Commands, Read Message History
+3. Enable permissions: View Channels, Send Messages, Send Messages in Threads, Embed Links, Use Slash Commands
 
 ### GitHub Webhook Setup
 
