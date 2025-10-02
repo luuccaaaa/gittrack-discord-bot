@@ -143,6 +143,7 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
   const workflow = payload.workflow_run;
   const workflowName = workflow.name;
   const workflowUrl = workflow.html_url;
+  const jobsUrl = payload.workflow_run.jobs_url;
   const conclusion = workflow.conclusion; // success, failure, cancelled, etc.
   const branch = workflow.head_branch;
   
@@ -224,8 +225,30 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
               { name: 'Conclusion', value: conclusion.charAt(0).toUpperCase() + conclusion.slice(1), inline: true }
             ],
             timestamp: workflow.updated_at || new Date().toISOString(),
-            footer: { text: 'GitHub Workflow Run' }
+            footer: { text: "GitHub Workflow Run" }
           };
+
+          let jobField = null;
+          try {
+            const jobsResponse = await fetch(jobsUrl);
+            console.log("jobsResponse: " + JSON.stringify(jobsResponse));
+            if (jobsResponse.ok) {
+              console.log("jobsResponse.jobs exists");
+              const jobsData = await jobsResponse.json();
+              if(jobsData?.jobs && jobsData.jobs.length > 0) {
+                jobField = analyzeJobs(jobsData?.jobs);
+              }
+            } else {
+              console.warn(`Failed to fetch jobs for workflow run: ${jobsResponse.jobs}`);
+            }
+          } catch (jobsError) {
+            console.error('Error fetching workflow jobs:', jobsError);
+          }
+
+          if (jobField) {
+            embed.fields.push(jobField);
+          }
+
           
           // Add run duration if available
           if (workflow.created_at && workflow.updated_at) {
@@ -240,6 +263,8 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
               inline: true 
             });
           }
+
+          
           
           const sentMessage = await channel.send({ embeds: [embed] });
           console.log(`Sent workflow notification to channel ${channelId} in guild ${serverConfig.guildId}`);
@@ -269,6 +294,149 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
     throw error; // Let handleEventWithLogging handle the error and response
   }
 }
+
+function analyzeJobs(jobs) {
+  if (!Array.isArray(jobs) || jobs.length === 0) {
+    return null;
+  }
+
+  const statusMeta = {
+    success: { indicator: '✓', label: 'Passed', color: 'green' },
+    failure: { indicator: '✗', label: 'Failed', color: 'red' },
+    cancelled: { indicator: '⬣', label: 'Cancelled', color: 'yellow' },
+    skipped: { indicator: '➤', label: 'Skipped', color: 'blue' },
+    timed_out: { indicator: '🕒', label: 'Timed out', color: 'orange' }
+  };
+
+  let passed = 0;
+  let failed = 0;
+
+  // Go through each job and prepare entries
+  const entries = jobs.map((job) => {
+    const conclusion = (job.conclusion || job.status || '').toLowerCase();
+    // map conclusion to known meta
+    const meta = statusMeta[conclusion];
+
+    // Update counts
+    if (conclusion === 'success') passed += 1;
+    else if (conclusion === 'failure') failed += 1;
+
+    // Format duration if available
+    const duration = formatDuration(job.started_at, job.completed_at);
+    // Prepare right side with colored label and optional duration
+    const right = duration
+      ? `${wrapAnsi(meta.indicator, meta.color)} ${wrapAnsi(meta.label, meta.color)} · ${duration}`
+      : `${wrapAnsi(meta.indicator, meta.color)} ${wrapAnsi(meta.label, meta.color)}`;
+
+    return {
+      indicator: meta.indicator,
+      name: job.name || 'Unnamed job',
+      right
+    };
+  });
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  const maxNameLength = Math.max(0, ...entries.map(({ name }) => name.length));
+  const formatted = entries.map(({ indicator, name, right }) => {
+    const paddedName = name.padEnd(maxNameLength, '    ');
+    const left = `\u001b[1;33m${paddedName}\u001b[0m`;
+    return {
+      left,
+      right,
+    };
+  });
+
+  const boxWidth =
+    Math.max(...formatted.map(({ left, right }) => left.length + right.length)) + 2;
+
+  const lines = formatted.map(({ left, right }) => {
+    const spacing = Math.max(1, boxWidth - left.length - right.length);
+    return `${left}${' '.repeat(spacing)}${right}`;
+  });
+
+  const passedString = wrapAnsi(`${passed} passed`, 'green');
+  const failedString = failed > 0 ? wrapAnsi(`${failed} failed`, 'red') : `${failed} failed`;
+
+  const header = `${passedString} · ${failedString}`;
+
+  const wrapLines = (lineArray) =>
+    `\`\`\`ansi\n\n${header}\n${lineArray.join('\n')}\n\`\`\``;
+
+  let value = wrapLines(lines);
+  let truncated = false;
+
+  while (value.length > 1024 && lines.length > 0) {
+    lines.pop();
+    truncated = true;
+    value = wrapLines(lines);
+  }
+
+  // If still too long, add ellipsis line
+  if (truncated) {
+    const ellipsisLeft = `! ${''.padEnd(maxNameLength, ' ')}`;
+    const ellipsisRight = wrapAnsi('…', 'yellow');
+    const leftLength = ellipsisLeft.length;
+    const rightLength = ellipsisRight.length;
+    const spacing = Math.max(1, boxWidth - leftLength - rightLength);
+    const ellipsisLine = `${ellipsisLeft}${' '.repeat(spacing)}${ellipsisRight}`;
+    const candidate = wrapLines([...lines, ellipsisLine]);
+    value = candidate.length <= 1024 ? candidate : wrapLines(lines);
+  }
+
+  return { name: 'Jobs', value, inline: false };
+}
+
+function formatDuration(start, end) {
+  if (!start || !end) {
+    return '';
+  }
+
+  const durationMs = new Date(end) - new Date(start);
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return '';
+  }
+
+  const totalSeconds = Math.round(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+
+function wrapAnsi(text, color) {
+  if (!text) return '';
+  const code = /^\d+$/.test(color) ? color : ansiColorCode(color);
+  return `\u001b[2;${code}m${text}\u001b[0m`;
+}
+
+function ansiColorCode(colorName) {
+  switch ((colorName || '').toLowerCase()) {
+    case 'green':
+      return '32';
+    case 'red':
+      return '31';
+    case 'yellow':
+      return '33';
+    case 'blue':
+      return '34';
+    case 'magenta':
+      return '35';
+    case 'cyan':
+      return '36';
+    case 'gray':
+    case 'grey':
+      return '90';
+    default:
+      return '37';
+  }
+}
+
+
+
 
 module.exports = {
   handleMilestoneEvent,
