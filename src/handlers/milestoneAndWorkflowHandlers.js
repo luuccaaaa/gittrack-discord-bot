@@ -305,7 +305,7 @@ function analyzeJobs(jobs) {
     failure: { indicator: '✗', label: 'Failed', color: 'red' },
     cancelled: { indicator: '⬣', label: 'Cancelled', color: 'yellow' },
     skipped: { indicator: '➤', label: 'Skipped', color: 'blue' },
-    timed_out: { indicator: '🕒', label: 'Timed out', color: 'orange' }
+    timed_out: { indicator: '🕒', label: 'Timed out', color: 'yellow' }
   };
 
   let passed = 0;
