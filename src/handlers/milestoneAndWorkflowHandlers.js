@@ -15,11 +15,34 @@ async function handleMilestoneEvent(req, res, payload, prisma, botClient, repoCo
     // Use repoContext directly as it's the validated one for this webhook
     const serverConfig = repoContext.server;
     // Prefer event-specific channel for milestone events and fetch config
-    const mapping = await prisma.repositoryEventChannel.findFirst({
+    let mapping = await prisma.repositoryEventChannel.findFirst({
       where: { repositoryId: repoContext.id, eventType: 'milestone' }
     });
-    const channelId = mapping?.channelId || repoContext.notificationChannelId || 'pending';
-    const config = mapping?.config || null;
+
+    // Auto-create a default mapping/config if missing to avoid silent skips
+    if (!mapping) {
+      const defaultConfig = { actionsEnabled: { created: true, opened: true, closed: true }, explicitChannel: false };
+      mapping = await prisma.repositoryEventChannel.create({
+        data: {
+          repositoryId: repoContext.id,
+          eventType: 'milestone',
+          channelId: 'default',
+          config: defaultConfig
+        }
+      });
+    }
+
+    // Resolve effective channel:
+    // - If channelId is the 'default' sentinel, use fallback
+    // - If channelId matches fallback and not explicitly set, treat as default
+    // - Otherwise use the stored channelId
+    const explicit = mapping.config && mapping.config.explicitChannel === true;
+    const effectiveChannelId = (mapping.channelId === 'default' || (!explicit && mapping.channelId === repoContext.notificationChannelId))
+      ? (repoContext.notificationChannelId || 'pending')
+      : (mapping.channelId || repoContext.notificationChannelId || 'pending');
+    
+    const channelId = effectiveChannelId;
+    const config = mapping.config || null;
 
     // Honor per-event action filter if configured, otherwise default important actions
     if (config && config.actionsEnabled && Object.prototype.hasOwnProperty.call(config.actionsEnabled, action)) {

@@ -6,11 +6,35 @@
 // Helper: resolve routing and config for pull_request event
 async function getPullRequestRouting(prisma, repoContext, fallbackChannelId) {
   try {
-    const mapping = await prisma.repositoryEventChannel.findFirst({
+    let mapping = await prisma.repositoryEventChannel.findFirst({
       where: { repositoryId: repoContext.id, eventType: 'pull_request' }
     });
-    return { channelId: mapping?.channelId || fallbackChannelId || 'pending', config: mapping?.config || null };
+
+    // Auto-create a default mapping/config if missing to avoid silent skips
+    if (!mapping) {
+      const defaultConfig = { actionsEnabled: { opened: true, closed: true, reopened: true, comments: false }, explicitChannel: false };
+      mapping = await prisma.repositoryEventChannel.create({
+        data: {
+          repositoryId: repoContext.id,
+          eventType: 'pull_request',
+          channelId: 'default',
+          config: defaultConfig
+        }
+      });
+    }
+
+    // Resolve effective channel:
+    // - If channelId is the 'default' sentinel, use fallback
+    // - If channelId matches fallback and not explicitly set, treat as default
+    // - Otherwise use the stored channelId
+    const explicit = mapping.config && mapping.config.explicitChannel === true;
+    const effectiveChannelId = (mapping.channelId === 'default' || (!explicit && mapping.channelId === fallbackChannelId))
+      ? (fallbackChannelId || 'pending')
+      : (mapping.channelId || fallbackChannelId || 'pending');
+
+    return { channelId: effectiveChannelId, config: mapping.config || null };
   } catch (e) {
+    console.error('getPullRequestRouting error:', e);
     return { channelId: fallbackChannelId || 'pending', config: null };
   }
 }
