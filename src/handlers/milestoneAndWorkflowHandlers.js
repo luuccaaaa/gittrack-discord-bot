@@ -342,7 +342,7 @@ function analyzeJobs(jobs) {
   const maxNameLength = Math.max(0, ...entries.map(({ name }) => name.length));
   const formatted = entries.map(({ indicator, name, right }) => {
     const paddedName = name.padEnd(maxNameLength, '    ');
-    const left = `\u001b[1;33m${paddedName}\u001b[0m`;
+    const left = `\u001b[1;2m${paddedName}\u001b[0m`;
     return {
       left,
       right,
