@@ -335,11 +335,15 @@ function analyzeJobs(jobs) {
     };
   });
 
+  // stop if no entries
   if (entries.length === 0) {
     return null;
   }
 
+  // Determine padding for alignment
   const maxNameLength = Math.max(0, ...entries.map(({ name }) => name.length));
+
+  // Format each entry with padding and ANSI codes
   const formatted = entries.map(({ indicator, name, right }) => {
     const paddedName = name.padEnd(maxNameLength, '    ');
     const left = `\u001b[1;2m${paddedName}\u001b[0m`;
@@ -349,25 +353,31 @@ function analyzeJobs(jobs) {
     };
   });
 
+  // Determine box width for alignment
   const boxWidth =
     Math.max(...formatted.map(({ left, right }) => left.length + right.length)) + 2;
 
+  // Create lines with proper spacing
   const lines = formatted.map(({ left, right }) => {
     const spacing = Math.max(1, boxWidth - left.length - right.length);
     return `${left}${' '.repeat(spacing)}${right}`;
   });
 
+  // Prepare header with summary
   const passedString = wrapAnsi(`${passed} passed`, 'green');
   const failedString = failed > 0 ? wrapAnsi(`${failed} failed`, 'red') : `${failed} failed`;
-
   const header = `${passedString} · ${failedString}`;
 
+  // Wrap lines in ANSI code block
+  
   const wrapLines = (lineArray) =>
     `\`\`\`ansi\n\n${header}\n${lineArray.join('\n')}\n\`\`\``;
 
   let value = wrapLines(lines);
   let truncated = false;
 
+  // Ensure total length does not exceed 1024 characters
+  // If too long, truncate lines from the end and add ellipsis line
   while (value.length > 1024 && lines.length > 0) {
     lines.pop();
     truncated = true;
@@ -389,6 +399,7 @@ function analyzeJobs(jobs) {
   return { name: 'Jobs', value, inline: false };
 }
 
+// Format duration between two ISO date strings into "Xm Ys" format
 function formatDuration(start, end) {
   if (!start || !end) {
     return '';
@@ -406,13 +417,14 @@ function formatDuration(start, end) {
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
-
+// Wrap text in ANSI color codes
 function wrapAnsi(text, color) {
   if (!text) return '';
   const code = /^\d+$/.test(color) ? color : ansiColorCode(color);
   return `\u001b[2;${code}m${text}\u001b[0m`;
 }
 
+// Map color names to ANSI codes
 function ansiColorCode(colorName) {
   switch ((colorName || '').toLowerCase()) {
     case 'green':
@@ -434,9 +446,6 @@ function ansiColorCode(colorName) {
       return '37';
   }
 }
-
-
-
 
 module.exports = {
   handleMilestoneEvent,
