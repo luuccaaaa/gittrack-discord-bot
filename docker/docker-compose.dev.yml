@@ -37,6 +37,7 @@ services:
     container_name: gittrack-postgres
     restart: unless-stopped
     environment:
+      # - DATABASE_URL=postgresql://gittrack:password@localhost:5432/gittrack
       - POSTGRES_DB=gittrack
       - POSTGRES_USER=gittrack
       - POSTGRES_PASSWORD=password
