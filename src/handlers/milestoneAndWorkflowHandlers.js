@@ -188,8 +188,9 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
         const channel = await botClient.channels.fetch(channelId);
         if (channel && channel.isTextBased()) {
           // Determine emoji and color based on conclusion
+          const normalizedConclusion = typeof conclusion === 'string' ? conclusion.toLowerCase() : 'unknown';
           let emoji, color;
-          switch (conclusion) {
+          switch (normalizedConclusion) {
             case 'success':
               emoji = '✅';
               color = 0x2CBE4E; // Green
@@ -217,12 +218,12 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
           
           const embed = {
             color: color,
-            title: `${emoji} Workflow "${workflowName}" ${conclusion} on ${branch}`,
+            title: `${emoji} Workflow "${workflowName}" ${normalizedConclusion} on ${branch}`,
             url: workflowUrl,
             fields: [
               { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: true },
               { name: 'Branch', value: branch, inline: true },
-              { name: 'Conclusion', value: conclusion.charAt(0).toUpperCase() + conclusion.slice(1), inline: true }
+              { name: 'Conclusion', value: normalizedConclusion.charAt(0).toUpperCase() + normalizedConclusion.slice(1), inline: true }
             ],
             timestamp: workflow.updated_at || new Date().toISOString(),
             footer: { text: "GitHub Workflow Run" }
@@ -230,14 +231,15 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
 
           let jobField = null;
           try {
-            const jobsResponse = await fetch(jobsUrl);
+            const headers = process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {};
+            const jobsResponse = await fetch(jobsUrl, { headers });
             if (jobsResponse.ok) {
               const jobsData = await jobsResponse.json();
               if(jobsData?.jobs && jobsData.jobs.length > 0) {
                 jobField = analyzeJobs(jobsData?.jobs);
               }
             } else {
-              console.warn(`Failed to fetch jobs for workflow run: ${jobsResponse.jobs}`);
+              console.warn(`Failed to fetch jobs for workflow run: ${jobsResponse.status} ${jobsResponse.statusText}`);
             }
           } catch (jobsError) {
             console.error('Error fetching workflow jobs:', jobsError);
@@ -262,7 +264,6 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
             });
           }
 
-          
           
           const sentMessage = await channel.send({ embeds: [embed] });
           console.log(`Sent workflow notification to channel ${channelId} in guild ${serverConfig.guildId}`);
@@ -303,7 +304,8 @@ function analyzeJobs(jobs) {
     failure: { indicator: '✗', label: 'Failed', color: 'red' },
     cancelled: { indicator: '⬣', label: 'Cancelled', color: 'yellow' },
     skipped: { indicator: '➤', label: 'Skipped', color: 'blue' },
-    timed_out: { indicator: '🕒', label: 'Timed out', color: 'yellow' }
+    timed_out: { indicator: '🕒', label: 'Timed out', color: 'yellow' },
+    default: { indicator: '•', label: 'Unknown', color: 'gray' }
   };
 
   let passed = 0;
@@ -343,7 +345,7 @@ function analyzeJobs(jobs) {
 
   // Format each entry with padding and ANSI codes
   const formatted = entries.map(({ indicator, name, right }) => {
-    const paddedName = name.padEnd(maxNameLength, '    ');
+    const paddedName = name.padEnd(maxNameLength, ' ');
     const left = `\u001b[1;2m${paddedName}\u001b[0m`;
     return {
       left,
@@ -353,11 +355,11 @@ function analyzeJobs(jobs) {
 
   // Determine box width for alignment
   const boxWidth =
-    Math.max(...formatted.map(({ left, right }) => left.length + right.length)) + 2;
+    Math.max(...formatted.map(({ left, right }) => stripAnsi(left).length + stripAnsi(right).length)) + 2;
 
   // Create lines with proper spacing
   const lines = formatted.map(({ left, right }) => {
-    const spacing = Math.max(1, boxWidth - left.length - right.length);
+    const spacing = Math.max(1, boxWidth - stripAnsi(left).length - stripAnsi(right).length);
     return `${left}${' '.repeat(spacing)}${right}`;
   });
 
@@ -420,6 +422,15 @@ function wrapAnsi(text, color) {
   if (!text) return '';
   const code = /^\d+$/.test(color) ? color : ansiColorCode(color);
   return `\u001b[2;${code}m${text}\u001b[0m`;
+}
+
+function stripAnsi(input) {
+  if (!input) return '';
+  return input.replace(
+    // eslint-disable-next-line no-control-regex
+    /\u001b\[[0-9;]*m/g,
+    ''
+  );
 }
 
 // Map color names to ANSI codes
