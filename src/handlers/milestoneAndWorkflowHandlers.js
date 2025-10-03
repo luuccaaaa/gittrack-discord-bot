@@ -231,9 +231,7 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
           let jobField = null;
           try {
             const jobsResponse = await fetch(jobsUrl);
-            console.log("jobsResponse: " + JSON.stringify(jobsResponse));
             if (jobsResponse.ok) {
-              console.log("jobsResponse.jobs exists");
               const jobsData = await jobsResponse.json();
               if(jobsData?.jobs && jobsData.jobs.length > 0) {
                 jobField = analyzeJobs(jobsData?.jobs);
