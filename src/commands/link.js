@@ -37,7 +37,7 @@ async function fetchBranches(repoUrl) {
     }
 
     const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/branches`, { headers });
-    
+
     if (!response.ok) {
       console.log(`GitHub API error: ${response.status} - ${response.statusText}`);
       return [];
@@ -70,7 +70,7 @@ module.exports = {
         .setDescription('The channel where notifications for this repository will be sent.')
         .addChannelTypes(0) // GuildText only
         .setRequired(true)),
-        
+
   async execute(interaction, prisma) {
     await interaction.deferReply({ ephemeral: true });
 
@@ -98,8 +98,8 @@ module.exports = {
     }
 
     if (!notificationChannel.isTextBased()) {
-        await interaction.editReply('The selected channel must be a text-based channel.');
-        return;
+      await interaction.editReply('The selected channel must be a text-based channel.');
+      return;
     }
 
     // Validate branch pattern
@@ -124,18 +124,18 @@ module.exports = {
       } else {
         possibleUrls.push(repoUrl + '.git'); // Add .git
       }
-      
+
       // Standardize URL format for display - we'll use URLs without the .git suffix
       const standardizedUrl = repoUrl.endsWith('.git') ? repoUrl.slice(0, -4) : repoUrl;
 
       // Update server notification channel
       const server = await prisma.server.upsert({
         where: { guildId: guildId },
-        update: { 
+        update: {
           name: guildName,
         },
-        create: { 
-          guildId: guildId, 
+        create: {
+          guildId: guildId,
           name: guildName,
         }
       });
@@ -151,7 +151,7 @@ module.exports = {
       if (!repository) {
         // Check repository limits for new repository
         const repoLimit = await checkRepositoryLimit(prisma, server.id);
-        
+
         if (repoLimit.isAtLimit) {
           await interaction.editReply(
             `You've reached the maximum number of repositories (${repoLimit.maxAllowed}) allowed on this server. ` +
@@ -159,7 +159,7 @@ module.exports = {
           );
           return;
         }
-        
+
         await interaction.editReply(
           `Repository not found. Please run \`/setup ${standardizedUrl}\` first to configure the webhook.`
         );
@@ -176,41 +176,41 @@ module.exports = {
           channelId: targetChannelForThisLink
         }
       });
-      
+
       // Get existing channels in use for user-friendly error message
       const trackedBranchesForServer = await prisma.trackedBranch.findMany({
         where: { repository: { serverId: server.id } },
         select: { channelId: true },
         distinct: ['channelId']
       });
-      
+
       const distinctChannelsInUse = new Set(
         trackedBranchesForServer
           .filter(tb => tb.channelId)
           .map(tb => tb.channelId)
       );
-      
+
       // Check if this channel is already being used for branch tracking
       const isChannelAlreadyTracking = distinctChannelsInUse.has(targetChannelForThisLink);
-      
+
       // Only check with the includeNewChannelId parameter if this is a new channel
       // If the channel is already in use for branch tracking, we don't need to include it again
       const channelLimit = await checkChannelLimit(
-        prisma, 
+        prisma,
         server.id,
         null, // Don't exclude any channels
         isChannelAlreadyTracking ? null : targetChannelForThisLink // Only include if it's a new channel
       );
-      
+
       // If adding this channel would exceed the limit
       if (channelLimit.isAtLimit && !isChannelAlreadyTracking) {
         // Create a better list of available channels for the user to choose from
         const availableChannels = Array.from(distinctChannelsInUse)
           .map(ch => `<#${ch}>`)
           .filter(ch => ch !== `<#${targetChannelForThisLink}>`); // Remove target channel from suggestions
-        
+
         let defaultChannelMention = '';
-        
+
         await interaction.editReply(
           `The server allows branch notifications to be sent to a maximum of ${channelLimit.maxAllowed} distinct channels. ` +
           `This server is already using ${channelLimit.currentCount}/${channelLimit.maxAllowed} channels for branch notifications${availableChannels.length > 0 ? ': ' + availableChannels.join(', ') : ''}. ` +
@@ -291,10 +291,12 @@ module.exports = {
       });
 
       // Success message
-      const branchDisplay = branchName === '*' ? 'all branches' : `branch \`${branchName}\``;
+      const { describeBranchPattern } = require('../functions/branchMatcher');
+      const branchDescription = describeBranchPattern(branchName);
+
       await interaction.editReply(
-        `✅ Successfully linked ${branchDisplay} from repository <${standardizedUrl}> to channel ${notificationChannel}.\n\n` +
-        `You will now receive notifications for this branch in the specified channel.`
+        `✅ Successfully linked **${branchDescription}** from repository <${standardizedUrl}> to channel ${notificationChannel}.\n\n` +
+        `You will now receive notifications matching this pattern in the specified channel.`
       );
 
     } catch (error) {
@@ -305,11 +307,11 @@ module.exports = {
 
   async autocomplete(interaction, prisma) {
     const focusedOption = interaction.options.getFocused(true);
-    
+
     if (focusedOption.name === 'url') {
       try {
         const guildId = interaction.guildId;
-        
+
         // Get repositories for this server
         const repositories = await prisma.repository.findMany({
           where: { server: { guildId } },
@@ -335,7 +337,7 @@ module.exports = {
         }
 
         const branches = await fetchBranches(urlOption);
-        
+
         // Add common patterns
         const choices = [
           { name: 'All branches (*)', value: '*' },
