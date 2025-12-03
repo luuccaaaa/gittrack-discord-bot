@@ -1,20 +1,16 @@
 /**
  * Branch pattern matching utility
  * Supports wildcard patterns like "features/*" to match branches with prefixes
+ * Supports negation patterns like "!main" to match all branches except the specified one
  */
 
 /**
- * Checks if a branch name matches a pattern
- * Supports:
- * - "*" for all branches
- * - "exact-branch-name" for exact matches
- * - "prefix/*" for prefix matching (e.g., "features/*" matches "features/api", "features/front-end")
- * 
+ * Checks if a branch name matches a positive pattern (without negation)
  * @param {string} branchName - The actual branch name from the webhook
- * @param {string} pattern - The pattern to match against
+ * @param {string} pattern - The pattern to match against (without ! prefix)
  * @returns {boolean} - True if the branch matches the pattern
  */
-function matchesBranchPattern(branchName, pattern) {
+function matchesPositivePattern(branchName, pattern) {
   // Handle wildcard for all branches
   if (pattern === '*') {
     return true;
@@ -35,6 +31,29 @@ function matchesBranchPattern(branchName, pattern) {
 }
 
 /**
+ * Checks if a branch name matches a pattern
+ * Supports:
+ * - "*" for all branches
+ * - "exact-branch-name" for exact matches
+ * - "prefix/*" for prefix matching (e.g., "features/*" matches "features/api", "features/front-end")
+ * - "!pattern" for negation (e.g., "!main" matches all branches except "main")
+ * 
+ * @param {string} branchName - The actual branch name from the webhook
+ * @param {string} pattern - The pattern to match against
+ * @returns {boolean} - True if the branch matches the pattern
+ */
+function matchesBranchPattern(branchName, pattern) {
+  // Handle negation patterns (e.g., "!main", "!feature/*")
+  if (pattern.startsWith('!')) {
+    const negatedPattern = pattern.slice(1); // Remove "!" prefix
+    // Match if the branch does NOT match the negated pattern
+    return !matchesPositivePattern(branchName, negatedPattern);
+  }
+  
+  return matchesPositivePattern(branchName, pattern);
+}
+
+/**
  * Finds all tracked branch patterns that match a given branch name
  * @param {Array} trackedBranches - Array of tracked branch objects with branchName property
  * @param {string} branchName - The branch name to match against
@@ -52,6 +71,17 @@ function findMatchingBranches(trackedBranches, branchName) {
  * @returns {boolean} - True if the pattern is valid
  */
 function isValidBranchPattern(pattern) {
+  // Handle negation patterns - validate the inner pattern
+  if (pattern.startsWith('!')) {
+    const innerPattern = pattern.slice(1);
+    // Negation of "*" doesn't make sense (would match nothing)
+    if (innerPattern === '*') {
+      return false;
+    }
+    // Validate the inner pattern (recursive call without the !)
+    return isValidBranchPattern(innerPattern);
+  }
+  
   // Allow "*" for all branches
   if (pattern === '*') {
     return true;
@@ -80,6 +110,16 @@ function isValidBranchPattern(pattern) {
  * @returns {string} - Human-readable description
  */
 function describeBranchPattern(pattern) {
+  // Handle negation patterns
+  if (pattern.startsWith('!')) {
+    const innerPattern = pattern.slice(1);
+    if (innerPattern.endsWith('/*')) {
+      const prefix = innerPattern.slice(0, -2);
+      return `All branches except those starting with "${prefix}/"`;
+    }
+    return `All branches except "${innerPattern}"`;
+  }
+  
   if (pattern === '*') {
     return 'All branches';
   }

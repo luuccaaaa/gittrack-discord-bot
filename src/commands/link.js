@@ -52,8 +52,9 @@ async function fetchBranches(repoUrl) {
 
 // Helper function to validate branch pattern
 function isValidBranchPattern(pattern) {
-  // Allow alphanumeric, hyphens, underscores, dots, slashes, and asterisks
-  const validPattern = /^[a-zA-Z0-9\-_.\/*]+$/;
+  // Allow alphanumeric, hyphens, underscores, dots, slashes, asterisks, and ! for negation
+  // Negation patterns start with ! (e.g., !main, !feature/*)
+  const validPattern = /^!?[a-zA-Z0-9\-_.\/*]+$/;
   return validPattern.test(pattern);
 }
 
@@ -115,7 +116,8 @@ module.exports = {
         '• `*` - Track all branches\n' +
         '• `main` - Track a specific branch\n' +
         '• `features/*` - Track all branches starting with "features/"\n' +
-        '• `hotfix/*` - Track all branches starting with "hotfix/"\n\n' +
+        '• `!main` - Track all branches except "main"\n' +
+        '• `!release/*` - Track all branches except those starting with "release/"\n\n' +
         'Branch names can only contain letters, numbers, hyphens, underscores, dots, and slashes.'
       );
       return;
