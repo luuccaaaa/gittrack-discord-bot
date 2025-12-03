@@ -1,4 +1,5 @@
 const { findMatchingBranches } = require('../functions/branchMatcher');
+const { getEventRouting } = require('../functions/eventRouting');
 
 async function handleMilestoneEvent(req, res, payload, prisma, botClient, repoContext) {
   const repoUrl = payload.repository.html_url;
@@ -8,41 +9,15 @@ async function handleMilestoneEvent(req, res, payload, prisma, botClient, repoCo
   const username = payload.sender.login;
   const description = payload.milestone.description || '';
   const dueDate = payload.milestone.due_on ? new Date(payload.milestone.due_on).toLocaleDateString() : 'No due date';
-  
+
   console.log(`Milestone "${milestoneTitle}" ${action} in ${repoUrl} by ${username}`);
 
   try {
     // Use repoContext directly as it's the validated one for this webhook
     const serverConfig = repoContext.server;
-    // Prefer event-specific channel for milestone events and fetch config
-    let mapping = await prisma.repositoryEventChannel.findFirst({
-      where: { repositoryId: repoContext.id, eventType: 'milestone' }
-    });
 
-    // Auto-create a default mapping/config if missing to avoid silent skips
-    if (!mapping) {
-      const defaultConfig = { actionsEnabled: { created: true, opened: true, closed: true }, explicitChannel: false };
-      mapping = await prisma.repositoryEventChannel.create({
-        data: {
-          repositoryId: repoContext.id,
-          eventType: 'milestone',
-          channelId: 'default',
-          config: defaultConfig
-        }
-      });
-    }
-
-    // Resolve effective channel:
-    // - If channelId is the 'default' sentinel, use fallback
-    // - If channelId matches fallback and not explicitly set, treat as default
-    // - Otherwise use the stored channelId
-    const explicit = mapping.config && mapping.config.explicitChannel === true;
-    const effectiveChannelId = (mapping.channelId === 'default' || (!explicit && mapping.channelId === repoContext.notificationChannelId))
-      ? (repoContext.notificationChannelId || 'pending')
-      : (mapping.channelId || repoContext.notificationChannelId || 'pending');
-    
-    const channelId = effectiveChannelId;
-    const config = mapping.config || null;
+    // Use shared event routing logic
+    const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'milestone', repoContext.notificationChannelId);
 
     // Honor per-event action filter if configured, otherwise default important actions
     if (config && config.actionsEnabled && Object.prototype.hasOwnProperty.call(config.actionsEnabled, action)) {
@@ -54,8 +29,8 @@ async function handleMilestoneEvent(req, res, payload, prisma, botClient, repoCo
     }
 
     if (channelId === 'pending') {
-        console.warn(`Notification channel pending for repository ${repoUrl} on server ${serverConfig.guildId}`);
-        return { statusCode: 200, message: 'Milestone event acknowledged, notification channel pending.', channelId: null, messageId: null };
+      console.warn(`Notification channel pending for repository ${repoUrl} on server ${serverConfig.guildId}`);
+      return { statusCode: 200, message: 'Milestone event acknowledged, notification channel pending.', channelId: null, messageId: null };
     }
 
     try {
@@ -74,7 +49,7 @@ async function handleMilestoneEvent(req, res, payload, prisma, botClient, repoCo
           default:
             emoji = '📝';
         }
-        
+
         const embed = {
           color: action === 'closed' ? 0x2CBE4E : 0x0366D6, // Green for closed, blue for others
           title: `${emoji} Milestone ${action.charAt(0).toUpperCase() + action.slice(1)}: ${milestoneTitle}`,
@@ -87,28 +62,28 @@ async function handleMilestoneEvent(req, res, payload, prisma, botClient, repoCo
           timestamp: new Date().toISOString(),
           footer: { text: 'GitHub Milestone Event' }
         };
-        
+
         // Add description if available
         if (description) {
-          embed.description = description.length > 200 
-            ? description.substring(0, 200) + '...' 
+          embed.description = description.length > 200
+            ? description.substring(0, 200) + '...'
             : description;
         }
-        
+
         // Add progress for closed/open milestones
         if (['opened', 'closed'].includes(action)) {
           const openIssues = payload.milestone.open_issues;
           const closedIssues = payload.milestone.closed_issues;
           const total = openIssues + closedIssues;
           const percentComplete = total > 0 ? Math.round((closedIssues / total) * 100) : 0;
-          
-          embed.fields.push({ 
-            name: 'Progress', 
-            value: `${closedIssues}/${total} issues completed (${percentComplete}%)`, 
-            inline: false 
+
+          embed.fields.push({
+            name: 'Progress',
+            value: `${closedIssues}/${total} issues completed (${percentComplete}%)`,
+            inline: false
           });
         }
-        
+
         const sentMessage = await channel.send({ embeds: [embed] });
         console.log(`Sent milestone notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
@@ -146,7 +121,7 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
   const jobsUrl = payload.workflow_run.jobs_url;
   const conclusion = workflow.conclusion; // success, failure, cancelled, etc.
   const branch = workflow.head_branch;
-  
+
   // Only send notifications for completed workflow runs
   if (action !== 'completed') {
     return { statusCode: 200, message: 'Workflow run event acknowledged.', channelId: null, messageId: null };
@@ -157,33 +132,33 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
   try {
     // Use repoContext directly as it's the validated one for this webhook
     const serverConfig = repoContext.server;
-    
+
     // Get all tracked branches for this repository
     const allTrackedBranches = await prisma.trackedBranch.findMany({
-        where: {
-            repositoryId: repoContext.id
-        }
+      where: {
+        repositoryId: repoContext.id
+      }
     });
 
     // Find branches that match the current branch using pattern matching
     const matchingBranches = findMatchingBranches(allTrackedBranches, branch);
-    
+
     if (matchingBranches.length === 0) {
       return { statusCode: 200, message: 'No matching branch configurations for this workflow run.', channelId: null, messageId: null };
     }
 
     let lastMessageInfo = { channelId: null, messageId: null };
-    
+
     // For each matching tracked branch, send a notification
     for (const trackedBranch of matchingBranches) {
       // Use the repository-specific notification channel, fall back to branch-specific channel if set
       const channelId = trackedBranch.channelId || repoContext.notificationChannelId || 'pending';
-      
+
       if (channelId === 'pending') {
         console.warn(`Notification channel pending for repository ${repoUrl} on server ${serverConfig.guildId}`);
         continue;
       }
-      
+
       try {
         const channel = await botClient.channels.fetch(channelId);
         if (channel && channel.isTextBased()) {
@@ -215,7 +190,7 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
               emoji = '🔄';
               color = 0x0366D6; // Blue
           }
-          
+
           const embed = {
             color: color,
             title: `${emoji} Workflow "${workflowName}" ${normalizedConclusion} on ${branch}`,
@@ -235,7 +210,7 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
             const jobsResponse = await fetch(jobsUrl, { headers });
             if (jobsResponse.ok) {
               const jobsData = await jobsResponse.json();
-              if(jobsData?.jobs && jobsData.jobs.length > 0) {
+              if (jobsData?.jobs && jobsData.jobs.length > 0) {
                 jobField = analyzeJobs(jobsData?.jobs);
               }
             } else {
@@ -249,7 +224,7 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
             embed.fields.push(jobField);
           }
 
-          
+
           // Add run duration if available
           if (workflow.created_at && workflow.updated_at) {
             const startTime = new Date(workflow.created_at);
@@ -257,17 +232,17 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
             const duration = Math.round((endTime - startTime) / 1000); // Duration in seconds
             const minutes = Math.floor(duration / 60);
             const seconds = duration % 60;
-            embed.fields.push({ 
-              name: 'Duration', 
-              value: minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`, 
-              inline: true 
+            embed.fields.push({
+              name: 'Duration',
+              value: minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`,
+              inline: true
             });
           }
 
-          
+
           const sentMessage = await channel.send({ embeds: [embed] });
           console.log(`Sent workflow notification to channel ${channelId} in guild ${serverConfig.guildId}`);
-          
+
           // Store the last message info for return
           lastMessageInfo = { channelId: channelId, messageId: sentMessage.id };
 
@@ -369,7 +344,7 @@ function analyzeJobs(jobs) {
   const header = `${passedString} · ${failedString}`;
 
   // Wrap lines in ANSI code block
-  
+
   const wrapLines = (lineArray) =>
     `\`\`\`ansi\n\n${header}\n${lineArray.join('\n')}\n\`\`\``;
 

@@ -6,6 +6,7 @@ const { handleWorkflowJobEvent, handleCheckRunEvent } = require('./checksHandler
 const { handlePRReviewEvent, handlePRReviewCommentEvent } = require('./pullRequestHandlers');
 const { checkChannelLimit } = require('../functions/limitChecker');
 const { findMatchingBranches } = require('../functions/branchMatcher');
+const { getEventRouting } = require('../functions/eventRouting');
 
 function initializeWebServer(prisma, botClient) {
   const app = express();
@@ -15,7 +16,7 @@ function initializeWebServer(prisma, botClient) {
   app.use('/github-webhook', express.raw({ type: '*/*', limit: '10mb' }), (req, res, next) => {
     // Store raw body for signature validation
     req.rawBody = req.body.toString('utf8');
-    
+
     // Parse based on content type
     const contentType = req.headers['content-type'];
     if (contentType && contentType.includes('application/json')) {
@@ -34,7 +35,7 @@ function initializeWebServer(prisma, botClient) {
         req.body = {};
       }
     }
-    
+
     next();
   });
 
@@ -51,27 +52,27 @@ function initializeWebServer(prisma, botClient) {
     const contentType = req.headers['content-type'];
     if (contentType && !contentType.includes('application/json')) {
       console.error(`Wrong content type: ${contentType}. GitHub webhooks must use application/json.`);
-      
+
       // Try to extract repository info from form data if possible and notify Discord
       await tryNotifyContentTypeError(req, prisma, botClient);
-      
+
       // Try to send a helpful error message
       const errorResponse = {
         error: 'Invalid Content Type',
         message: 'GitHub webhook content type must be "application/json", not "application/x-www-form-urlencoded"',
         fix: 'Go to your GitHub repository → Settings → Webhooks → Edit your webhook → Change "Content type" to "application/json"'
       };
-      
+
       return res.status(400).json(errorResponse);
     }
-    
+
     // Get important information from GitHub's payload
     const payload = req.body;
-    
+
     // Ensure we have a valid payload with repository information
     if (!payload || !payload.repository || !payload.repository.html_url) {
       console.error('Webhook received with invalid payload structure');
-      
+
       // More detailed error for debugging
       const errorResponse = {
         error: 'Invalid Payload Structure',
@@ -79,10 +80,10 @@ function initializeWebServer(prisma, botClient) {
         received: typeof payload,
         fix: 'Ensure your GitHub webhook is properly configured and sending JSON data'
       };
-      
+
       return res.status(400).json(errorResponse);
     }
-    
+
     const repoUrl = payload.repository.html_url;
     const signature = req.headers['x-hub-signature-256'];
     const event = req.headers['x-github-event'];
@@ -127,10 +128,10 @@ function initializeWebServer(prisma, botClient) {
           console.error('Invalid signature format.');
           continue; // Or break, as it won't match any
         }
-              const providedSignature = signature.substring(signaturePrefix.length);
-      const hmac = crypto.createHmac('sha256', secretToUse);
-      hmac.update(req.rawBody); // Use the raw request body for signature validation
-      const expectedSignature = hmac.digest('hex');
+        const providedSignature = signature.substring(signaturePrefix.length);
+        const hmac = crypto.createHmac('sha256', secretToUse);
+        hmac.update(req.rawBody); // Use the raw request body for signature validation
+        const expectedSignature = hmac.digest('hex');
 
         if (
           Buffer.from(providedSignature, 'hex').length === Buffer.from(expectedSignature, 'hex').length &&
@@ -152,14 +153,14 @@ function initializeWebServer(prisma, botClient) {
         return res.status(400).send('No event type specified');
       }
 
-              // Event verified successfully - no need to log every webhook
+      // Event verified successfully - no need to log every webhook
 
       // Track processing time for error logging
       const startTime = Date.now();
 
       // Pass validatedRepositoryContext to handlers
       const loggingContext = { startTime, event, action: payload.action };
-      
+
       switch (event) {
         case 'push':
           return await handleEventWithLogging(handlePushEvent, req, res, payload, prisma, botClient, validatedRepositoryContext, loggingContext);
@@ -220,7 +221,7 @@ function initializeWebServer(prisma, botClient) {
       }
     } catch (error) {
       console.error('Error processing webhook:', error);
-      
+
       // Log error to ErrorLog for debugging
       try {
         await prisma.errorLog.create({
@@ -242,7 +243,7 @@ function initializeWebServer(prisma, botClient) {
       } catch (logError) {
         console.error('Failed to log webhook error:', logError);
       }
-      
+
       return res.status(500).send('Internal server error');
     }
   });
@@ -262,67 +263,7 @@ function initializeWebServer(prisma, botClient) {
     }
   });
 
-  // Resolve channel and config for non-branch events with per-event override
-  async function getEventRouting(prisma, repositoryId, eventType, fallbackChannelId) {
-    try {
-      let mapping = await prisma.repositoryEventChannel.findFirst({
-        where: { repositoryId, eventType }
-      });
 
-      // Auto-create a default mapping/config if missing to avoid silent skips
-      if (!mapping) {
-        const defaultConfig = { actionsEnabled: getDefaultActionsForEvent(eventType), explicitChannel: false };
-        mapping = await prisma.repositoryEventChannel.create({
-          data: {
-            repositoryId,
-            eventType,
-            channelId: 'default',
-            config: defaultConfig
-          }
-        });
-      }
-
-      // Resolve effective channel:
-      // - If channelId is the 'default' sentinel, use fallback
-      // - If channelId matches fallback and not explicitly set, treat as default
-      // - Otherwise use the stored channelId
-      const explicit = mapping.config && mapping.config.explicitChannel === true;
-      const effectiveChannelId = (mapping.channelId === 'default' || (!explicit && mapping.channelId === fallbackChannelId))
-        ? (fallbackChannelId || 'pending')
-        : (mapping.channelId || fallbackChannelId || 'pending');
-
-      return { channelId: effectiveChannelId, config: mapping.config || null };
-    } catch (e) {
-      console.error('getEventRouting error:', e);
-      return { channelId: fallbackChannelId || 'pending', config: null };
-    }
-  }
-
-  function getDefaultActionsForEvent(eventType) {
-    // Sensible defaults: enable common actions; comments disabled by default
-    switch (eventType) {
-      case 'issues':
-        return { opened: true, closed: true, reopened: true, edited: true, labeled: true, assigned: true, comments: false };
-      case 'pull_request':
-        return { opened: true, closed: true, reopened: true, comments: false };
-      case 'release':
-        return { published: true };
-      case 'star':
-        return { created: true, deleted: true };
-      case 'fork':
-        return { created: true };
-      case 'create':
-        return { created: true };
-      case 'delete':
-        return { deleted: true };
-      case 'milestone':
-        return { created: true, opened: true, closed: true };
-      case 'ping':
-        return { ping: true };
-      default:
-        return {}; // Unknown events get empty config
-    }
-  }
 
   // Define event handlers to accept validatedRepositoryContext
   // Example for one handler (others would follow a similar pattern):
@@ -354,19 +295,19 @@ function initializeWebServer(prisma, botClient) {
     }
 
     if (channelId === 'pending') {
-        console.warn(`Notification channel pending for repository ${repoUrl} on server ${serverConfig.guildId}`);
-        return { statusCode: 200, message: 'Comment event acknowledged, notification channel pending.', channelId: null, messageId: null };
+      console.warn(`Notification channel pending for repository ${repoUrl} on server ${serverConfig.guildId}`);
+      return { statusCode: 200, message: 'Comment event acknowledged, notification channel pending.', channelId: null, messageId: null };
     }
 
     try {
       // Check channel limits before sending notification
       const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
-      
+
       if (!canSendNotification) {
-                  console.warn(`Skipping notification delivery to channel ${channelId} due to channel limit`);
+        console.warn(`Skipping notification delivery to channel ${channelId} due to channel limit`);
         return { statusCode: 200, message: `${issueType} comment event acknowledged, but notification skipped due to channel limits.`, channelId: null, messageId: null };
       }
-      
+
       const channel = await botClient.channels.fetch(channelId);
       if (channel && channel.isTextBased()) {
         const emoji = isPR ? '💬' : '🗣️';
@@ -410,15 +351,15 @@ function initializeWebServer(prisma, botClient) {
         } catch (dbError) {
           console.error(`Failed to increment messagesSent for server ${serverConfig.id}:`, dbError);
         }
-        
+
         return { statusCode: 200, message: `${issueType} comment event processed successfully.`, channelId: channelId, messageId: sentMessage.id };
 
-              }
+      }
     } catch (err) {
       console.error(`Error sending comment message to channel ${channelId}:`, err);
       return { statusCode: 200, message: `${issueType} comment event processed successfully.`, channelId: null, messageId: null };
     }
-    
+
     return { statusCode: 200, message: `${issueType} comment event processed successfully.`, channelId: null, messageId: null };
   }
 
@@ -426,118 +367,118 @@ function initializeWebServer(prisma, botClient) {
     const repoUrl = payload.repository.html_url;
     const branchRef = payload.ref;
     const branchName = branchRef.startsWith('refs/heads/') ? branchRef.substring(11) : null;
-  
+
     if (!branchName) {
       return { statusCode: 200, message: 'Could not determine branch name.', channelId: null, messageId: null };
     }
-  
+
     const serverConfig = repoContext.server;
     let lastMessageInfo = { channelId: null, messageId: null };
-    
+
     // Get all tracked branches for this repository
     const allTrackedBranches = await prisma.trackedBranch.findMany({
-        where: {
-            repositoryId: repoContext.id
-        }
+      where: {
+        repositoryId: repoContext.id
+      }
     });
 
     // Find branches that match the current branch using pattern matching
     const trackedBranchConfigs = findMatchingBranches(allTrackedBranches, branchName);
 
     if (trackedBranchConfigs.length === 0) {
-              // No tracking configurations match this branch
+      // No tracking configurations match this branch
       return { statusCode: 200, message: 'No configurations for this push on the authenticated server.', channelId: null, messageId: null };
     }
 
     for (const tbConfig of trackedBranchConfigs) {
-        // Use the repository-specific notification channel, fall back to branch-specific channel if set
-        const channelId = tbConfig.channelId || repoContext.notificationChannelId || 'pending';
-        if (channelId === 'pending') continue;
+      // Use the repository-specific notification channel, fall back to branch-specific channel if set
+      const channelId = tbConfig.channelId || repoContext.notificationChannelId || 'pending';
+      if (channelId === 'pending') continue;
 
-        try {
-            // Check channel limits before sending notification
-            const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
-            
-            if (!canSendNotification) {
-                console.warn(`Skipping branch notification delivery to channel ${channelId} due to exceeding channel limit`);
-                continue; // Skip this channel, try others
-            }
-            
-            const channel = await botClient.channels.fetch(channelId);
-            if (channel && channel.isTextBased()) {
-                const color = 0x4F46E5;
-                const embed = {
-                    color: color,
-                    author: {
-                        name: payload.sender.login, // Use sender's login for author name
-                        icon_url: payload.sender.avatar_url, // Sender's avatar
-                        url: payload.sender.html_url // Link to sender's GitHub profile
-                    },
-                    timestamp: new Date().toISOString(),
-                    footer: { text: `GitHub Push Event` }
-                };
-                // ... (rest of embed construction logic from original handlePushEvent)
-                if (payload.created && (!payload.commits || payload.commits.length === 0)) {
-                    embed.title = `🌱 New Branch Created: ${branchName}`;
-                    embed.url = `${repoUrl}/tree/${branchName}`;
-                    embed.fields = [
-                        { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: false },
-                        { name: 'Created by', value: payload.pusher.name || 'Unknown', inline: false },
-                    ];
-                } else if (payload.forced) {
-                    embed.title = `⚠️ Force Push to ${branchName}`;
-                    embed.url = payload.compare;
-                    embed.fields = [
-                        { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: true },
-                        { name: 'Branch', value: `\`${branchName}\``, inline: true },
-                        { name: 'Forced by', value: payload.pusher.name || 'Unknown', inline: false },
-                    ];
-                } else if (payload.commits && payload.commits.length > 0) {
-                    embed.title = `🚀 New Push to ${branchName}`;
-                    embed.url = payload.compare;
-                    embed.description = payload.commits.slice(0, 5).map(commit => {
-                        const commitMessage = commit.message.split('\n')[0];
-                        return `[\`${commit.id.substring(0, 7)}\`](${commit.url}) ${commitMessage}`;
-                    }).join('\n');
-                    if (payload.commits.length > 5) {
-                        embed.description += `\n...and ${payload.commits.length - 5} more commit(s).`;
-                    }
-                    embed.fields = [
-                        { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: true },
-                        { name: 'Branch', value: `\`${branchName}\``, inline: true },
-                        { name: 'Pusher', value: payload.pusher.name || 'Unknown', inline: false },
-                    ];
-                } else {
-                    embed.title = `⚙️ Push Event on ${branchName}`;
-                    embed.url = payload.compare || repoUrl;
-                    embed.fields = [
-                        { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: true },
-                        { name: 'Branch', value: `\`${branchName}\``, inline: true },
-                        { name: 'Details', value: 'Push event with no commits.', inline: false },
-                    ];
-                }
-                const sentMessage = await channel.send({ embeds: [embed] });
-                
-                // Store message info for logging (track the latest message sent)
-                lastMessageInfo = {
-                    channelId: channelId,
-                    messageId: sentMessage.id
-                };
-                
-                // Increment messagesSent counter
-                try {
-                  await prisma.server.update({
-                    where: { id: serverConfig.id },
-                    data: { messagesSent: { increment: 1 } },
-                  });
-                  // Messages sent counter incremented for push event
-                } catch (dbError) {
-                  console.error(`Failed to increment messagesSent for server ${serverConfig.id} after push event:`, dbError);
-                }
-            }
-        } catch (err) {
-            console.error(`Error sending push message to channel ${channelId}:`, err);
+      try {
+        // Check channel limits before sending notification
+        const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
+
+        if (!canSendNotification) {
+          console.warn(`Skipping branch notification delivery to channel ${channelId} due to exceeding channel limit`);
+          continue; // Skip this channel, try others
         }
+
+        const channel = await botClient.channels.fetch(channelId);
+        if (channel && channel.isTextBased()) {
+          const color = 0x4F46E5;
+          const embed = {
+            color: color,
+            author: {
+              name: payload.sender.login, // Use sender's login for author name
+              icon_url: payload.sender.avatar_url, // Sender's avatar
+              url: payload.sender.html_url // Link to sender's GitHub profile
+            },
+            timestamp: new Date().toISOString(),
+            footer: { text: `GitHub Push Event` }
+          };
+          // ... (rest of embed construction logic from original handlePushEvent)
+          if (payload.created && (!payload.commits || payload.commits.length === 0)) {
+            embed.title = `🌱 New Branch Created: ${branchName}`;
+            embed.url = `${repoUrl}/tree/${branchName}`;
+            embed.fields = [
+              { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: false },
+              { name: 'Created by', value: payload.pusher.name || 'Unknown', inline: false },
+            ];
+          } else if (payload.forced) {
+            embed.title = `⚠️ Force Push to ${branchName}`;
+            embed.url = payload.compare;
+            embed.fields = [
+              { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: true },
+              { name: 'Branch', value: `\`${branchName}\``, inline: true },
+              { name: 'Forced by', value: payload.pusher.name || 'Unknown', inline: false },
+            ];
+          } else if (payload.commits && payload.commits.length > 0) {
+            embed.title = `🚀 New Push to ${branchName}`;
+            embed.url = payload.compare;
+            embed.description = payload.commits.slice(0, 5).map(commit => {
+              const commitMessage = commit.message.split('\n')[0];
+              return `[\`${commit.id.substring(0, 7)}\`](${commit.url}) ${commitMessage}`;
+            }).join('\n');
+            if (payload.commits.length > 5) {
+              embed.description += `\n...and ${payload.commits.length - 5} more commit(s).`;
+            }
+            embed.fields = [
+              { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: true },
+              { name: 'Branch', value: `\`${branchName}\``, inline: true },
+              { name: 'Pusher', value: payload.pusher.name || 'Unknown', inline: false },
+            ];
+          } else {
+            embed.title = `⚙️ Push Event on ${branchName}`;
+            embed.url = payload.compare || repoUrl;
+            embed.fields = [
+              { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: true },
+              { name: 'Branch', value: `\`${branchName}\``, inline: true },
+              { name: 'Details', value: 'Push event with no commits.', inline: false },
+            ];
+          }
+          const sentMessage = await channel.send({ embeds: [embed] });
+
+          // Store message info for logging (track the latest message sent)
+          lastMessageInfo = {
+            channelId: channelId,
+            messageId: sentMessage.id
+          };
+
+          // Increment messagesSent counter
+          try {
+            await prisma.server.update({
+              where: { id: serverConfig.id },
+              data: { messagesSent: { increment: 1 } },
+            });
+            // Messages sent counter incremented for push event
+          } catch (dbError) {
+            console.error(`Failed to increment messagesSent for server ${serverConfig.id} after push event:`, dbError);
+          }
+        }
+      } catch (err) {
+        console.error(`Error sending push message to channel ${channelId}:`, err);
+      }
     }
     // Return response with the last message info sent
     return { statusCode: 200, message: 'Push event processed for authenticated server.', ...lastMessageInfo };
@@ -563,58 +504,58 @@ function initializeWebServer(prisma, botClient) {
     if (channelId === 'pending') return { statusCode: 200, message: 'PR event ack, channel pending.', channelId: null, messageId: null };
 
     try {
-        // Check channel limits before sending notification
-        const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
-        
-        if (!canSendNotification) {
-            console.warn(`Skipping PR notification delivery to channel ${channelId} due to channel limit`);
-            return { statusCode: 200, message: 'Pull request event acknowledged, but notification skipped due to channel limits.', channelId: null, messageId: null };
-        }
-        
-        const channel = await botClient.channels.fetch(channelId);
-        if (channel && channel.isTextBased()) {
-            let emoji = '📋'; let color = 0x768390; let titleAction = action.charAt(0).toUpperCase() + action.slice(1);
-            // ... (switch logic for emoji, color, titleAction from original)
-            switch (action) {
-                case 'opened': case 'reopened': emoji = '🔍'; color = 0x2DA44E; break;
-                case 'closed': if (pr.merged) { emoji = '🟣'; color = 0x8957E5; titleAction = 'Merged'; } else { emoji = '❌'; color = 0xCF222E; } break;
-                case 'synchronize': emoji = '📝'; color = 0x0969DA; titleAction = 'Updated'; break;
-                case 'assigned': case 'unassigned': case 'review_requested': case 'review_request_removed': case 'labeled': case 'unlabeled': emoji = '🔔'; color = 0x0969DA; break;
-            }
+      // Check channel limits before sending notification
+      const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
 
-            const embed = {
-                color: color,
-                author: { name: pr.user.login, icon_url: pr.user.avatar_url, url: pr.user.html_url },
-                title: `${emoji} Pull Request #${payload.number} ${titleAction}: ${pr.title}`,
-                url: pr.html_url,
-                fields: [
-                    { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: false },
-                    { name: 'Branches', value: `\`${pr.head.ref}\` → \`${pr.base.ref}\``, inline: true },
-                    { name: 'State', value: pr.state.charAt(0).toUpperCase() + pr.state.slice(1), inline: true },
-                ],
-                timestamp: pr.updated_at || new Date().toISOString(),
-                footer: { text: `GitHub Pull Request` }
-            };
-            // ... (rest of embed construction from original)
-            if (pr.body) { let prBody = pr.body; if (prBody.length > 300) { prBody = prBody.substring(0, 297) + '...'; } embed.description = prBody; }
-            if (action === 'closed' && pr.merged) { embed.fields.push({ name: 'Merged by', value: pr.merged_by.login, inline: true }); }
-            if (action === 'assigned' && payload.assignee) { embed.description = `${pr.user.login} assigned ${payload.assignee.login}.`; }
-            // ... (other action specific descriptions)
+      if (!canSendNotification) {
+        console.warn(`Skipping PR notification delivery to channel ${channelId} due to channel limit`);
+        return { statusCode: 200, message: 'Pull request event acknowledged, but notification skipped due to channel limits.', channelId: null, messageId: null };
+      }
 
-            const sentMessage = await channel.send({ embeds: [embed] });
-            // Increment messagesSent counter
-            try {
-              await prisma.server.update({
-                where: { id: serverConfig.id },
-                data: { messagesSent: { increment: 1 } },
-              });
-              console.log(`Incremented messagesSent for server ${serverConfig.id} after PR event`);
-            } catch (dbError) {
-              console.error(`Failed to increment messagesSent for server ${serverConfig.id} after PR event:`, dbError);
-            }
-            
-            return { statusCode: 200, message: 'Pull request event processed for authenticated server.', channelId: channelId, messageId: sentMessage.id };
+      const channel = await botClient.channels.fetch(channelId);
+      if (channel && channel.isTextBased()) {
+        let emoji = '📋'; let color = 0x768390; let titleAction = action.charAt(0).toUpperCase() + action.slice(1);
+        // ... (switch logic for emoji, color, titleAction from original)
+        switch (action) {
+          case 'opened': case 'reopened': emoji = '🔍'; color = 0x2DA44E; break;
+          case 'closed': if (pr.merged) { emoji = '🟣'; color = 0x8957E5; titleAction = 'Merged'; } else { emoji = '❌'; color = 0xCF222E; } break;
+          case 'synchronize': emoji = '📝'; color = 0x0969DA; titleAction = 'Updated'; break;
+          case 'assigned': case 'unassigned': case 'review_requested': case 'review_request_removed': case 'labeled': case 'unlabeled': emoji = '🔔'; color = 0x0969DA; break;
         }
+
+        const embed = {
+          color: color,
+          author: { name: pr.user.login, icon_url: pr.user.avatar_url, url: pr.user.html_url },
+          title: `${emoji} Pull Request #${payload.number} ${titleAction}: ${pr.title}`,
+          url: pr.html_url,
+          fields: [
+            { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: false },
+            { name: 'Branches', value: `\`${pr.head.ref}\` → \`${pr.base.ref}\``, inline: true },
+            { name: 'State', value: pr.state.charAt(0).toUpperCase() + pr.state.slice(1), inline: true },
+          ],
+          timestamp: pr.updated_at || new Date().toISOString(),
+          footer: { text: `GitHub Pull Request` }
+        };
+        // ... (rest of embed construction from original)
+        if (pr.body) { let prBody = pr.body; if (prBody.length > 300) { prBody = prBody.substring(0, 297) + '...'; } embed.description = prBody; }
+        if (action === 'closed' && pr.merged) { embed.fields.push({ name: 'Merged by', value: pr.merged_by.login, inline: true }); }
+        if (action === 'assigned' && payload.assignee) { embed.description = `${pr.user.login} assigned ${payload.assignee.login}.`; }
+        // ... (other action specific descriptions)
+
+        const sentMessage = await channel.send({ embeds: [embed] });
+        // Increment messagesSent counter
+        try {
+          await prisma.server.update({
+            where: { id: serverConfig.id },
+            data: { messagesSent: { increment: 1 } },
+          });
+          console.log(`Incremented messagesSent for server ${serverConfig.id} after PR event`);
+        } catch (dbError) {
+          console.error(`Failed to increment messagesSent for server ${serverConfig.id} after PR event:`, dbError);
+        }
+
+        return { statusCode: 200, message: 'Pull request event processed for authenticated server.', channelId: channelId, messageId: sentMessage.id };
+      }
     } catch (err) { console.error(`Error sending PR message to channel ${channelId}:`, err); }
     return { statusCode: 200, message: 'Pull request event processed for authenticated server.', channelId: channelId, messageId: null };
   }
@@ -642,51 +583,51 @@ function initializeWebServer(prisma, botClient) {
     if (channelId === 'pending') return { statusCode: 200, message: 'Issue event ack, channel pending.', channelId: null, messageId: null };
 
     try {
-        // Check channel limits before sending notification
-        const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
-        
-        if (!canSendNotification) {
-            console.warn(`Skipping issue notification delivery to channel ${channelId} due to channel limit`);
-            return { statusCode: 200, message: 'Issue event acknowledged, but notification skipped due to channel limits.', channelId: null, messageId: null };
-        }
-        
-        const channel = await botClient.channels.fetch(channelId);
-        if (channel && channel.isTextBased()) {
-            let emoji = '📝'; let color = 0x0969DA; let titleAction = action.charAt(0).toUpperCase() + action.slice(1);
-            // ... (switch logic for emoji, color from original)
-            switch (action) { case 'opened': emoji = '🐛'; break; case 'closed': emoji = '✅'; color = 0x1A7F37; break; case 'reopened': emoji = '🔄'; break; }
+      // Check channel limits before sending notification
+      const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
 
-            const embed = {
-                color: color,
-                author: { name: issue.user.login, icon_url: issue.user.avatar_url, url: issue.user.html_url },
-                title: `${emoji} Issue #${issue.number} ${titleAction}: ${issue.title}`,
-                url: issue.html_url,
-                fields: [
-                    { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: false },
-                    { name: 'State', value: issue.state.charAt(0).toUpperCase() + issue.state.slice(1), inline: true },
-                ],
-                timestamp: issue.updated_at || new Date().toISOString(),
-                footer: { text: `GitHub Issue` }
-            };
-            // ... (rest of embed construction from original)
-            if (issue.body) { let issueBody = issue.body; if (issueBody.length > 300) { issueBody = issueBody.substring(0, 297) + '...'; } embed.description = issueBody; }
-            if (issue.labels && issue.labels.length > 0) { embed.fields.push({ name: 'Labels', value: issue.labels.map(l => `\`${l.name}\``).join(', '), inline: true }); }
-            // ... (other action specific descriptions)
+      if (!canSendNotification) {
+        console.warn(`Skipping issue notification delivery to channel ${channelId} due to channel limit`);
+        return { statusCode: 200, message: 'Issue event acknowledged, but notification skipped due to channel limits.', channelId: null, messageId: null };
+      }
 
-            const sentMessage = await channel.send({ embeds: [embed] });
-            // Increment messagesSent counter
-            try {
-              await prisma.server.update({
-                where: { id: serverConfig.id },
-                data: { messagesSent: { increment: 1 } },
-              });
-              console.log(`Incremented messagesSent for server ${serverConfig.id} after issue event`);
-            } catch (dbError) {
-              console.error(`Failed to increment messagesSent for server ${serverConfig.id} after issue event:`, dbError);
-            }
-            
-            return { statusCode: 200, message: 'Issue event processed for authenticated server.', channelId: channelId, messageId: sentMessage.id };
+      const channel = await botClient.channels.fetch(channelId);
+      if (channel && channel.isTextBased()) {
+        let emoji = '📝'; let color = 0x0969DA; let titleAction = action.charAt(0).toUpperCase() + action.slice(1);
+        // ... (switch logic for emoji, color from original)
+        switch (action) { case 'opened': emoji = '🐛'; break; case 'closed': emoji = '✅'; color = 0x1A7F37; break; case 'reopened': emoji = '🔄'; break; }
+
+        const embed = {
+          color: color,
+          author: { name: issue.user.login, icon_url: issue.user.avatar_url, url: issue.user.html_url },
+          title: `${emoji} Issue #${issue.number} ${titleAction}: ${issue.title}`,
+          url: issue.html_url,
+          fields: [
+            { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: false },
+            { name: 'State', value: issue.state.charAt(0).toUpperCase() + issue.state.slice(1), inline: true },
+          ],
+          timestamp: issue.updated_at || new Date().toISOString(),
+          footer: { text: `GitHub Issue` }
+        };
+        // ... (rest of embed construction from original)
+        if (issue.body) { let issueBody = issue.body; if (issueBody.length > 300) { issueBody = issueBody.substring(0, 297) + '...'; } embed.description = issueBody; }
+        if (issue.labels && issue.labels.length > 0) { embed.fields.push({ name: 'Labels', value: issue.labels.map(l => `\`${l.name}\``).join(', '), inline: true }); }
+        // ... (other action specific descriptions)
+
+        const sentMessage = await channel.send({ embeds: [embed] });
+        // Increment messagesSent counter
+        try {
+          await prisma.server.update({
+            where: { id: serverConfig.id },
+            data: { messagesSent: { increment: 1 } },
+          });
+          console.log(`Incremented messagesSent for server ${serverConfig.id} after issue event`);
+        } catch (dbError) {
+          console.error(`Failed to increment messagesSent for server ${serverConfig.id} after issue event:`, dbError);
         }
+
+        return { statusCode: 200, message: 'Issue event processed for authenticated server.', channelId: channelId, messageId: sentMessage.id };
+      }
     } catch (err) { console.error(`Error sending issue message to channel ${channelId}:`, err); }
     return { statusCode: 200, message: 'Issue event processed for authenticated server.', channelId: channelId, messageId: null };
   }
@@ -705,51 +646,51 @@ function initializeWebServer(prisma, botClient) {
     if (channelId === 'pending') return { statusCode: 200, message: 'Star event ack, channel pending.', channelId: null, messageId: null };
 
     try {
-        // Check channel limits before sending notification
-        const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
-        
-        if (!canSendNotification) {
-            console.warn(`Skipping star notification delivery to channel ${channelId} due to channel limit`);
-            return { statusCode: 200, message: 'Star event acknowledged, but notification skipped due to channel limits.', channelId: null, messageId: null };
-        }
-        
-        const channel = await botClient.channels.fetch(channelId);
-        if (channel && channel.isTextBased()) {
-            const isStar = action === 'created';
-            const title = isStar ? `⭐ New Star for ${payload.repository.name}!` : `💔 Star Removed from ${payload.repository.name}`;
-            const description = isStar
-              ? `${payload.sender.login} starred [${payload.repository.full_name}](${repoUrl}).`
-              : `${payload.sender.login} unstarred [${payload.repository.full_name}](${repoUrl}).`;
-            const embed = {
-                color: isStar ? 0xFFAC33 : 0x6B7280,
-                author: { name: payload.sender.login, icon_url: payload.sender.avatar_url, url: payload.sender.html_url },
-                title,
-                url: repoUrl,
-                fields: [
-                    { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: true },
-                    { name: 'Total Stars', value: payload.repository.stargazers_count.toString(), inline: true },
-                ],
-                description,
-                timestamp: new Date().toISOString(),
-                footer: { text: `GitHub Star Event` }
-            };
-                      const sentMessage = await channel.send({ embeds: [embed] });
-          console.log(`Sent star notification to channel ${channelId} in guild ${serverConfig.guildId}`);
+      // Check channel limits before sending notification
+      const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
 
-          // Increment messagesSent counter
-          try {
-            await prisma.server.update({
-              where: { id: serverConfig.id },
-              data: { messagesSent: { increment: 1 } },
-            });
-            console.log(`Incremented messagesSent for server ${serverConfig.id} after star event`);
-          } catch (dbError) {
-            console.error(`Failed to increment messagesSent for server ${serverConfig.id} after star event:`, dbError);
-          }
-          
-          // Return message info for logging
-          return { statusCode: 200, message: 'Star event processed for authenticated server.', channelId: channelId, messageId: sentMessage.id };
+      if (!canSendNotification) {
+        console.warn(`Skipping star notification delivery to channel ${channelId} due to channel limit`);
+        return { statusCode: 200, message: 'Star event acknowledged, but notification skipped due to channel limits.', channelId: null, messageId: null };
+      }
+
+      const channel = await botClient.channels.fetch(channelId);
+      if (channel && channel.isTextBased()) {
+        const isStar = action === 'created';
+        const title = isStar ? `⭐ New Star for ${payload.repository.name}!` : `💔 Star Removed from ${payload.repository.name}`;
+        const description = isStar
+          ? `${payload.sender.login} starred [${payload.repository.full_name}](${repoUrl}).`
+          : `${payload.sender.login} unstarred [${payload.repository.full_name}](${repoUrl}).`;
+        const embed = {
+          color: isStar ? 0xFFAC33 : 0x6B7280,
+          author: { name: payload.sender.login, icon_url: payload.sender.avatar_url, url: payload.sender.html_url },
+          title,
+          url: repoUrl,
+          fields: [
+            { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: true },
+            { name: 'Total Stars', value: payload.repository.stargazers_count.toString(), inline: true },
+          ],
+          description,
+          timestamp: new Date().toISOString(),
+          footer: { text: `GitHub Star Event` }
+        };
+        const sentMessage = await channel.send({ embeds: [embed] });
+        console.log(`Sent star notification to channel ${channelId} in guild ${serverConfig.guildId}`);
+
+        // Increment messagesSent counter
+        try {
+          await prisma.server.update({
+            where: { id: serverConfig.id },
+            data: { messagesSent: { increment: 1 } },
+          });
+          console.log(`Incremented messagesSent for server ${serverConfig.id} after star event`);
+        } catch (dbError) {
+          console.error(`Failed to increment messagesSent for server ${serverConfig.id} after star event:`, dbError);
         }
+
+        // Return message info for logging
+        return { statusCode: 200, message: 'Star event processed for authenticated server.', channelId: channelId, messageId: sentMessage.id };
+      }
     } catch (err) { console.error(`Error sending star message to channel ${channelId}:`, err); }
     return { statusCode: 200, message: 'Star event processed for authenticated server.', channelId: null, messageId: null };
   }
@@ -770,46 +711,46 @@ function initializeWebServer(prisma, botClient) {
     if (channelId === 'pending') return { statusCode: 200, message: 'Release event ack, channel pending.', channelId: null, messageId: null };
 
     try {
-        // Check channel limits before sending notification
-        const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
-        
-        if (!canSendNotification) {
-            console.warn(`Skipping release notification delivery to channel ${channelId} due to channel limit`);
-            return { statusCode: 200, message: 'Release event acknowledged, but notification skipped due to channel limits.', channelId: null, messageId: null };
-        }
-        
-        const channel = await botClient.channels.fetch(channelId);
-        if (channel && channel.isTextBased()) {
-            const emoji = release.prerelease ? '🚧' : '🚀';
-            const embed = {
-                color: 0xA371F7,
-                author: { name: release.author.login, icon_url: release.author.avatar_url, url: release.author.html_url },
-                title: `${emoji} New ${release.prerelease ? 'Pre-release' : 'Release'}: ${release.name || release.tag_name}`,
-                url: release.html_url,
-                fields: [
-                    { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: false },
-                    { name: 'Tag', value: `\`${release.tag_name}\``, inline: true },
-                ],
-                timestamp: release.published_at || new Date().toISOString(),
-                footer: { text: `GitHub Release` }
-            };
-            if (release.body) { let body = release.body; if (body.length > 1500) body = body.substring(0, 1497) + '...'; embed.description = body; }
-            const sentMessage = await channel.send({ embeds: [embed] });
-            console.log(`Sent release notification to channel ${channelId} in guild ${serverConfig.guildId}`);
+      // Check channel limits before sending notification
+      const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
 
-            // Increment messagesSent counter
-            try {
-              await prisma.server.update({
-                where: { id: serverConfig.id },
-                data: { messagesSent: { increment: 1 } },
-              });
-              console.log(`Incremented messagesSent for server ${serverConfig.id} after release event`);
-            } catch (dbError) {
-              console.error(`Failed to increment messagesSent for server ${serverConfig.id} after release event:`, dbError);
-            }
-            
-            return { statusCode: 200, message: 'Release event processed for authenticated server.', channelId: channelId, messageId: sentMessage.id };
+      if (!canSendNotification) {
+        console.warn(`Skipping release notification delivery to channel ${channelId} due to channel limit`);
+        return { statusCode: 200, message: 'Release event acknowledged, but notification skipped due to channel limits.', channelId: null, messageId: null };
+      }
+
+      const channel = await botClient.channels.fetch(channelId);
+      if (channel && channel.isTextBased()) {
+        const emoji = release.prerelease ? '🚧' : '🚀';
+        const embed = {
+          color: 0xA371F7,
+          author: { name: release.author.login, icon_url: release.author.avatar_url, url: release.author.html_url },
+          title: `${emoji} New ${release.prerelease ? 'Pre-release' : 'Release'}: ${release.name || release.tag_name}`,
+          url: release.html_url,
+          fields: [
+            { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: false },
+            { name: 'Tag', value: `\`${release.tag_name}\``, inline: true },
+          ],
+          timestamp: release.published_at || new Date().toISOString(),
+          footer: { text: `GitHub Release` }
+        };
+        if (release.body) { let body = release.body; if (body.length > 1500) body = body.substring(0, 1497) + '...'; embed.description = body; }
+        const sentMessage = await channel.send({ embeds: [embed] });
+        console.log(`Sent release notification to channel ${channelId} in guild ${serverConfig.guildId}`);
+
+        // Increment messagesSent counter
+        try {
+          await prisma.server.update({
+            where: { id: serverConfig.id },
+            data: { messagesSent: { increment: 1 } },
+          });
+          console.log(`Incremented messagesSent for server ${serverConfig.id} after release event`);
+        } catch (dbError) {
+          console.error(`Failed to increment messagesSent for server ${serverConfig.id} after release event:`, dbError);
         }
+
+        return { statusCode: 200, message: 'Release event processed for authenticated server.', channelId: channelId, messageId: sentMessage.id };
+      }
     } catch (err) { console.error(`Error sending release message to channel ${channelId}:`, err); }
     return { statusCode: 200, message: 'Release event processed for authenticated server.', channelId: channelId, messageId: null };
   }
@@ -828,44 +769,44 @@ function initializeWebServer(prisma, botClient) {
     if (channelId === 'pending') return { statusCode: 200, message: 'Fork event ack, channel pending.', channelId: null, messageId: null };
 
     try {
-        // Check channel limits before sending notification
-        const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
-        
-        if (!canSendNotification) {
-            console.warn(`Skipping fork notification delivery to channel ${channelId} due to channel limit`);
-            return { statusCode: 200, message: 'Fork event acknowledged, but notification skipped due to channel limits.', channelId: null, messageId: null };
-        }
-        
-        const channel = await botClient.channels.fetch(channelId);
-        if (channel && channel.isTextBased()) {
-            const embed = {
-                color: 0x6F42C1,
-                author: { name: payload.sender.login, icon_url: payload.sender.avatar_url, url: payload.sender.html_url },
-                title: '🍴 Repository Forked',
-                description: `[${payload.repository.full_name}](${repoUrl}) was forked by ${payload.sender.login} to [${forkeeRepo.full_name}](${forkeeRepo.html_url}).`,
-                fields: [
-                    { name: 'Source Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: true },
-                    { name: 'New Fork', value: `[${forkeeRepo.full_name}](${forkeeRepo.html_url})`, inline: true },
-                ],
-                timestamp: forkeeRepo.created_at || new Date().toISOString(),
-                footer: { text: 'GitHub Fork Event' }
-            };
-            const sentMessage = await channel.send({ embeds: [embed] });
-            console.log(`Sent fork notification to channel ${channelId} in guild ${serverConfig.guildId}`);
+      // Check channel limits before sending notification
+      const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
 
-            // Increment messagesSent counter
-            try {
-              await prisma.server.update({
-                where: { id: serverConfig.id },
-                data: { messagesSent: { increment: 1 } },
-              });
-              console.log(`Incremented messagesSent for server ${serverConfig.id} after fork event`);
-            } catch (dbError) {
-              console.error(`Failed to increment messagesSent for server ${serverConfig.id} after fork event:`, dbError);
-            }
-            
-            return { statusCode: 200, message: 'Fork event processed for authenticated server.', channelId: channelId, messageId: sentMessage.id };
+      if (!canSendNotification) {
+        console.warn(`Skipping fork notification delivery to channel ${channelId} due to channel limit`);
+        return { statusCode: 200, message: 'Fork event acknowledged, but notification skipped due to channel limits.', channelId: null, messageId: null };
+      }
+
+      const channel = await botClient.channels.fetch(channelId);
+      if (channel && channel.isTextBased()) {
+        const embed = {
+          color: 0x6F42C1,
+          author: { name: payload.sender.login, icon_url: payload.sender.avatar_url, url: payload.sender.html_url },
+          title: '🍴 Repository Forked',
+          description: `[${payload.repository.full_name}](${repoUrl}) was forked by ${payload.sender.login} to [${forkeeRepo.full_name}](${forkeeRepo.html_url}).`,
+          fields: [
+            { name: 'Source Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: true },
+            { name: 'New Fork', value: `[${forkeeRepo.full_name}](${forkeeRepo.html_url})`, inline: true },
+          ],
+          timestamp: forkeeRepo.created_at || new Date().toISOString(),
+          footer: { text: 'GitHub Fork Event' }
+        };
+        const sentMessage = await channel.send({ embeds: [embed] });
+        console.log(`Sent fork notification to channel ${channelId} in guild ${serverConfig.guildId}`);
+
+        // Increment messagesSent counter
+        try {
+          await prisma.server.update({
+            where: { id: serverConfig.id },
+            data: { messagesSent: { increment: 1 } },
+          });
+          console.log(`Incremented messagesSent for server ${serverConfig.id} after fork event`);
+        } catch (dbError) {
+          console.error(`Failed to increment messagesSent for server ${serverConfig.id} after fork event:`, dbError);
         }
+
+        return { statusCode: 200, message: 'Fork event processed for authenticated server.', channelId: channelId, messageId: sentMessage.id };
+      }
     } catch (err) { console.error(`Error sending fork message to channel ${channelId}:`, err); }
     return { statusCode: 200, message: 'Fork event processed for authenticated server.', channelId: channelId, messageId: null };
   }
@@ -890,50 +831,50 @@ function initializeWebServer(prisma, botClient) {
     // More complex filtering could be added if needed (e.g., checking TrackedBranch for '*').
 
     try {
-        // Check channel limits before sending notification
-        const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
-        
-        if (!canSendNotification) {
-            console.warn(`Skipping create event notification delivery to channel ${channelId} due to channel limit`);
-            return { statusCode: 200, message: 'Create event acknowledged, but notification skipped due to channel limits.', channelId: null, messageId: null };
-        }
-        
-        const channel = await botClient.channels.fetch(channelId);
-        if (channel && channel.isTextBased()) {
-            const emoji = refType === 'branch' ? '🌱' : '🏷️';
-            const color = refType === 'branch' ? 0x4F46E5 : 0x6A737D;
-            const embed = {
-                color: color,
-                author: { name: payload.sender.login, icon_url: payload.sender.avatar_url, url: payload.sender.html_url },
-                title: `${emoji} New ${refType} Created: ${refName}`,
-                url: `${repoUrl}/tree/${encodeURIComponent(refName)}`,
-                fields: [
-                    { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: false },
-                    { name: (refType.charAt(0).toUpperCase() + refType.slice(1)), value: `\`${refName}\``, inline: true },
-                    { name: 'Created by', value: payload.sender.login, inline: true },
-                ],
-                timestamp: new Date().toISOString(),
-                footer: { text: `GitHub ${refType.charAt(0).toUpperCase() + refType.slice(1)} Creation` }
-            };
-            if (refType === 'branch') {
-              embed.description = `To track this branch specifically, use:\n\`/link ${repoUrl} ${refName} #channel\``;
-            }
-            const sentMessage = await channel.send({ embeds: [embed] });
-            console.log(`Sent create notification to channel ${channelId} in guild ${serverConfig.guildId}`);
+      // Check channel limits before sending notification
+      const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
 
-            // Increment messagesSent counter
-            try {
-              await prisma.server.update({
-                where: { id: serverConfig.id },
-                data: { messagesSent: { increment: 1 } },
-              });
-              console.log(`Incremented messagesSent for server ${serverConfig.id} after create event`);
-            } catch (dbError) {
-              console.error(`Failed to increment messagesSent for server ${serverConfig.id} after create event:`, dbError);
-            }
-            
-            return { statusCode: 200, message: 'Create event processed for authenticated server.', channelId: channelId, messageId: sentMessage.id };
+      if (!canSendNotification) {
+        console.warn(`Skipping create event notification delivery to channel ${channelId} due to channel limit`);
+        return { statusCode: 200, message: 'Create event acknowledged, but notification skipped due to channel limits.', channelId: null, messageId: null };
+      }
+
+      const channel = await botClient.channels.fetch(channelId);
+      if (channel && channel.isTextBased()) {
+        const emoji = refType === 'branch' ? '🌱' : '🏷️';
+        const color = refType === 'branch' ? 0x4F46E5 : 0x6A737D;
+        const embed = {
+          color: color,
+          author: { name: payload.sender.login, icon_url: payload.sender.avatar_url, url: payload.sender.html_url },
+          title: `${emoji} New ${refType} Created: ${refName}`,
+          url: `${repoUrl}/tree/${encodeURIComponent(refName)}`,
+          fields: [
+            { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: false },
+            { name: (refType.charAt(0).toUpperCase() + refType.slice(1)), value: `\`${refName}\``, inline: true },
+            { name: 'Created by', value: payload.sender.login, inline: true },
+          ],
+          timestamp: new Date().toISOString(),
+          footer: { text: `GitHub ${refType.charAt(0).toUpperCase() + refType.slice(1)} Creation` }
+        };
+        if (refType === 'branch') {
+          embed.description = `To track this branch specifically, use:\n\`/link ${repoUrl} ${refName} #channel\``;
         }
+        const sentMessage = await channel.send({ embeds: [embed] });
+        console.log(`Sent create notification to channel ${channelId} in guild ${serverConfig.guildId}`);
+
+        // Increment messagesSent counter
+        try {
+          await prisma.server.update({
+            where: { id: serverConfig.id },
+            data: { messagesSent: { increment: 1 } },
+          });
+          console.log(`Incremented messagesSent for server ${serverConfig.id} after create event`);
+        } catch (dbError) {
+          console.error(`Failed to increment messagesSent for server ${serverConfig.id} after create event:`, dbError);
+        }
+
+        return { statusCode: 200, message: 'Create event processed for authenticated server.', channelId: channelId, messageId: sentMessage.id };
+      }
     } catch (err) { console.error(`Error sending create message to channel ${channelId}:`, err); }
     return { statusCode: 200, message: 'Create event processed for authenticated server.', channelId: channelId, messageId: null };
   }
@@ -953,47 +894,47 @@ function initializeWebServer(prisma, botClient) {
     if (channelId === 'pending') return { statusCode: 200, message: 'Delete event ack, channel pending.', channelId: null, messageId: null };
 
     try {
-        // Check channel limits before sending notification
-        const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
-        
-        if (!canSendNotification) {
-            console.warn(`Skipping delete event notification delivery to channel ${channelId} due to channel limit`);
-            return { statusCode: 200, message: 'Delete event acknowledged, but notification skipped due to channel limits.', channelId: null, messageId: null };
-        }
-        
-        const channel = await botClient.channels.fetch(channelId);
-        if (channel && channel.isTextBased()) {
-            const emoji = '🗑️'; 
-            const color = 0xCF222E;
-            const embed = {
-                color: color,
-                author: { name: payload.sender.login, icon_url: payload.sender.avatar_url, url: payload.sender.html_url },
-                title: `${emoji} ${refType.charAt(0).toUpperCase() + refType.slice(1)} Deleted: ${refName}`,
-                url: repoUrl,
-                fields: [
-                    { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: false },
-                    { name: (refType.charAt(0).toUpperCase() + refType.slice(1)), value: `\`${refName}\``, inline: true },
-                    { name: 'Deleted by', value: payload.sender.login, inline: true },
-                ],
-                timestamp: new Date().toISOString(),
-                footer: { text: `GitHub ${refType.charAt(0).toUpperCase() + refType.slice(1)} Deletion` }
-            };
-            const sentMessage = await channel.send({ embeds: [embed] });
-            console.log(`Sent delete notification to channel ${channelId} in guild ${serverConfig.guildId}`);
+      // Check channel limits before sending notification
+      const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
 
-            // Increment messagesSent counter
-            try {
-              await prisma.server.update({
-                where: { id: serverConfig.id },
-                data: { messagesSent: { increment: 1 } },
-              });
-              console.log(`Incremented messagesSent for server ${serverConfig.id} after delete event`);
-            } catch (dbError) {
-              console.error(`Failed to increment messagesSent for server ${serverConfig.id} after delete event:`, dbError);
-            }
-            
-            return { statusCode: 200, message: 'Delete event processed for authenticated server.', channelId: channelId, messageId: sentMessage.id };
+      if (!canSendNotification) {
+        console.warn(`Skipping delete event notification delivery to channel ${channelId} due to channel limit`);
+        return { statusCode: 200, message: 'Delete event acknowledged, but notification skipped due to channel limits.', channelId: null, messageId: null };
+      }
+
+      const channel = await botClient.channels.fetch(channelId);
+      if (channel && channel.isTextBased()) {
+        const emoji = '🗑️';
+        const color = 0xCF222E;
+        const embed = {
+          color: color,
+          author: { name: payload.sender.login, icon_url: payload.sender.avatar_url, url: payload.sender.html_url },
+          title: `${emoji} ${refType.charAt(0).toUpperCase() + refType.slice(1)} Deleted: ${refName}`,
+          url: repoUrl,
+          fields: [
+            { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: false },
+            { name: (refType.charAt(0).toUpperCase() + refType.slice(1)), value: `\`${refName}\``, inline: true },
+            { name: 'Deleted by', value: payload.sender.login, inline: true },
+          ],
+          timestamp: new Date().toISOString(),
+          footer: { text: `GitHub ${refType.charAt(0).toUpperCase() + refType.slice(1)} Deletion` }
+        };
+        const sentMessage = await channel.send({ embeds: [embed] });
+        console.log(`Sent delete notification to channel ${channelId} in guild ${serverConfig.guildId}`);
+
+        // Increment messagesSent counter
+        try {
+          await prisma.server.update({
+            where: { id: serverConfig.id },
+            data: { messagesSent: { increment: 1 } },
+          });
+          console.log(`Incremented messagesSent for server ${serverConfig.id} after delete event`);
+        } catch (dbError) {
+          console.error(`Failed to increment messagesSent for server ${serverConfig.id} after delete event:`, dbError);
         }
+
+        return { statusCode: 200, message: 'Delete event processed for authenticated server.', channelId: channelId, messageId: sentMessage.id };
+      }
     } catch (err) { console.error(`Error sending delete message to channel ${channelId}:`, err); }
     return { statusCode: 200, message: 'Delete event processed for authenticated server.', channelId: channelId, messageId: null };
   }
@@ -1005,17 +946,17 @@ function initializeWebServer(prisma, botClient) {
     const channelId = repoContext.notificationChannelId || 'pending';
 
     if (channelId === 'pending') {
-        console.warn(`Ping event for ${repoUrl}, but repository notification channel is pending.`);
-        return { statusCode: 200, message: 'Ping event ack, channel pending.', channelId: null, messageId: null };
+      console.warn(`Ping event for ${repoUrl}, but repository notification channel is pending.`);
+      return { statusCode: 200, message: 'Ping event ack, channel pending.', channelId: null, messageId: null };
     }
 
     try {
       // Check channel limits before sending notification
       // For ping events, we'll always send the notification with a warning if needed, but won't block
       const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
-      
+
       // Always continue with ping events to ensure webhook setup works
-      
+
       const channel = await botClient.channels.fetch(channelId);
       if (channel && channel.isTextBased()) {
         const embed = {
@@ -1043,20 +984,20 @@ function initializeWebServer(prisma, botClient) {
           title: '📋 How to Track your Branches',
           description: 'Now that your webhook is set up, you can link specific branches to receive notifications:',
           fields: [
-            { 
-              name: '🌿 Link a specific branch', 
-              value: `\`/link repo-url branch #channel\`\nReplace \`branch\` with your branch name and \`#channel\` with your desired channel.`, 
-              inline: false 
+            {
+              name: '🌿 Link a specific branch',
+              value: `\`/link repo-url branch #channel\`\nReplace \`branch\` with your branch name and \`#channel\` with your desired channel.`,
+              inline: false
             },
-            { 
-              name: '🌟 Link all branches (wildcard)', 
-              value: `\`/link repo-url * #channel\`\nUse \`*\` to track all branches in the repository.`, 
-              inline: false 
+            {
+              name: '🌟 Link all branches (wildcard)',
+              value: `\`/link repo-url * #channel\`\nUse \`*\` to track all branches in the repository.`,
+              inline: false
             },
-            { 
-              name: '📖 Need help?', 
-              value: 'Use `/help` to see all available commands and their usage.', 
-              inline: false 
+            {
+              name: '📖 Need help?',
+              value: 'Use `/help` to see all available commands and their usage.',
+              inline: false
             }
           ],
           footer: { text: 'GitTrack - Branch Linking Guide' },
@@ -1090,17 +1031,17 @@ async function tryNotifyContentTypeError(req, prisma, botClient) {
   try {
     // When GitHub sends form-urlencoded, we need to parse the payload from the raw body
     let repoUrl = null;
-    
 
-    
+
+
     // Parse the form-urlencoded data manually from raw body
     if (req.rawBody && req.rawBody.includes('payload=')) {
       try {
         // Parse the form-urlencoded data properly
         const parsed = querystring.parse(req.rawBody);
-        
 
-        
+
+
         if (parsed.payload) {
           // Parse the JSON payload to get repository info
           const parsedPayload = JSON.parse(parsed.payload);
@@ -1113,20 +1054,20 @@ async function tryNotifyContentTypeError(req, prisma, botClient) {
 
       }
     }
-    
+
     if (!repoUrl || !req.rawBody) {
       console.log('Could not extract repository URL or raw body from malformed webhook for Discord notification');
 
       return;
     }
-    
+
     // Get signature for validation (same as main webhook handler)
     const signature = req.headers['x-hub-signature-256'];
     if (!signature) {
       console.log('No signature found in malformed webhook request');
       return;
     }
-    
+
     // Find all candidate repositories (same logic as main webhook handler)
     const possibleUrls = [repoUrl];
     if (repoUrl.endsWith('.git')) {
@@ -1134,57 +1075,57 @@ async function tryNotifyContentTypeError(req, prisma, botClient) {
     } else {
       possibleUrls.push(repoUrl + '.git');
     }
-    
+
     const candidateRepositories = await prisma.repository.findMany({
       where: { url: { in: possibleUrls } },
       include: { server: true }
     });
-    
+
     if (!candidateRepositories || candidateRepositories.length === 0) {
       console.log(`No repositories found for ${repoUrl} in content type error notification`);
       return;
     }
-    
+
     // Validate signature to find the correct repository/server (same logic as main webhook handler)
     let validatedRepository = null;
-    
 
-    
+
+
     for (const repoEntry of candidateRepositories) {
       const secretToUse = repoEntry.webhookSecret || process.env.GITHUB_WEBHOOK_SECRET;
       if (!secretToUse) {
 
         continue;
       }
-      
-      
-      
+
+
+
       const signaturePrefix = 'sha256=';
-              if (!signature.startsWith(signaturePrefix)) {
-          continue;
-        }
-      
+      if (!signature.startsWith(signaturePrefix)) {
+        continue;
+      }
+
       const providedSignature = signature.substring(signaturePrefix.length);
       const hmac = crypto.createHmac('sha256', secretToUse);
       hmac.update(req.rawBody); // Use the raw request body for signature validation
       const expectedSignature = hmac.digest('hex');
-      
-      
-      
-              if (
-          Buffer.from(providedSignature, 'hex').length === Buffer.from(expectedSignature, 'hex').length &&
-          crypto.timingSafeEqual(Buffer.from(providedSignature, 'hex'), Buffer.from(expectedSignature, 'hex'))
-        ) {
-          validatedRepository = repoEntry;
-          break;
-        }
+
+
+
+      if (
+        Buffer.from(providedSignature, 'hex').length === Buffer.from(expectedSignature, 'hex').length &&
+        crypto.timingSafeEqual(Buffer.from(providedSignature, 'hex'), Buffer.from(expectedSignature, 'hex'))
+      ) {
+        validatedRepository = repoEntry;
+        break;
+      }
     }
-    
+
     if (!validatedRepository) {
       console.log(`No validated repository found for ${repoUrl} in content type error notification`);
       return;
     }
-    
+
     // Send notification to the validated repository's channel
     if (validatedRepository.notificationChannelId && validatedRepository.notificationChannelId !== 'pending') {
       const channel = await botClient.channels.fetch(validatedRepository.notificationChannelId);
@@ -1213,7 +1154,7 @@ async function tryNotifyContentTypeError(req, prisma, botClient) {
           footer: { text: 'GitTrack Configuration Error' },
           timestamp: new Date().toISOString()
         };
-        
+
         await channel.send({ embeds: [embed] });
         console.log(`Sent content type error notification for ${repoUrl} to channel ${validatedRepository.notificationChannelId} on server ${validatedRepository.server.guildId}`);
       }
@@ -1228,10 +1169,10 @@ async function checkChannelLimitAndWarn(prisma, botClient, repoContext, channelI
   try {
     // Get repo default channel for reference
     const repoDefaultChannel = repoContext.notificationChannelId;
-    
+
     // Don't skip default channels - they should be counted if used explicitly for branch tracking
     // (that logic is handled in the checkChannelLimit function)
-    
+
     const serverConfig = repoContext.server;
     const { isAtLimit, currentCount, maxAllowed } = await checkChannelLimit(
       prisma,
@@ -1255,7 +1196,7 @@ async function checkChannelLimitAndWarn(prisma, botClient, repoContext, channelI
               footer: { text: 'GitTrack Notification Limit' }
             }]
           });
-          
+
           console.log(`Sent channel limit warning to channel ${channelId} in guild ${serverConfig.guildId}`);
 
           // Return true to still attempt delivery despite warning
@@ -1287,7 +1228,7 @@ async function handleEventWithLogging(handler, req, res, payload, prisma, botCli
   let messageId = null;
   let errorMessage = null;
   let responseSent = false;
-  
+
   // Helper function to send response only once
   const sendResponse = (statusCode, message) => {
     if (responseSent) {
@@ -1297,38 +1238,38 @@ async function handleEventWithLogging(handler, req, res, payload, prisma, botCli
     responseSent = true;
     return res.status(statusCode).send(message);
   };
-  
+
   try {
     result = await handler(req, res, payload, prisma, botClient, repoContext);
-    
+
     // Extract channelId and messageId from result if handler returns them
     if (result && typeof result === 'object') {
       channelId = result.channelId || null;
       messageId = result.messageId || null;
     }
-    
+
     // Send the HTTP response based on the handler result
     let responseMessage = 'Event processed successfully';
     let responseCode = 200;
-    
+
     if (result && result.statusCode && result.message) {
       responseCode = result.statusCode;
       responseMessage = result.message;
     }
-    
+
     // Send response immediately to avoid any race conditions
     const responsePromise = sendResponse(responseCode, responseMessage);
-    
+
     // No need to log successful webhook events to reduce database load
-    
+
     return responsePromise;
   } catch (error) {
     console.error(`Error in ${event} handler:`, error);
     errorMessage = error.message;
-    
+
     // Send error response immediately
     const responsePromise = sendResponse(500, 'Webhook processing failed');
-    
+
     // Log error to ErrorLog for debugging
     try {
       await prisma.errorLog.create({
@@ -1350,7 +1291,7 @@ async function handleEventWithLogging(handler, req, res, payload, prisma, botCli
     } catch (logError) {
       console.error('Failed to log webhook error:', logError);
     }
-    
+
     // Also log the error to ErrorLog table (async, non-blocking)
     prisma.errorLog.create({
       data: {
@@ -1369,7 +1310,7 @@ async function handleEventWithLogging(handler, req, res, payload, prisma, botCli
     }).catch(logError => {
       console.error('Failed to log error:', logError);
     });
-    
+
     return responsePromise;
   }
 }
