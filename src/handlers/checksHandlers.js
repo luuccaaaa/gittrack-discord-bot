@@ -1,4 +1,5 @@
 const { findMatchingBranches } = require('../functions/branchMatcher');
+const { getEventRouting } = require('../functions/eventRouting');
 
 async function handleWorkflowJobEvent(req, res, payload, prisma, botClient, repoContext) {
   const repoUrl = payload.repository.html_url;
@@ -11,7 +12,23 @@ async function handleWorkflowJobEvent(req, res, payload, prisma, botClient, repo
   }
 
   const serverConfig = repoContext.server;
-  const channelId = repoContext.notificationChannelId || 'pending';
+
+  // Check configuration
+  const { channelId: routedChannelId, config } = await getEventRouting(prisma, repoContext.id, 'workflow_job', repoContext.notificationChannelId);
+
+  // Require explicit enablement
+  if (config && config.actionsEnabled) {
+    if (!config.actionsEnabled[action]) {
+      return { statusCode: 200, message: `Workflow job action '${action}' disabled by config.`, channelId: null, messageId: null };
+    }
+  } else {
+    // Default behavior if no config: allow 'completed'
+    if (action !== 'completed') {
+      return { statusCode: 200, message: 'Workflow job event not configured; skipping.', channelId: null, messageId: null };
+    }
+  }
+
+  const channelId = routedChannelId || 'pending';
 
   if (channelId === 'pending') {
     console.warn(`Notification channel pending for repository ${repoUrl} on server ${serverConfig.guildId}`);
@@ -85,6 +102,21 @@ async function handleCheckRunEvent(req, res, payload, prisma, botClient, repoCon
 
   const serverConfig = repoContext.server;
 
+  // Check configuration
+  const { channelId: routedChannelId, config } = await getEventRouting(prisma, repoContext.id, 'check_run', repoContext.notificationChannelId);
+
+  // Require explicit enablement
+  if (config && config.actionsEnabled) {
+    if (!config.actionsEnabled[action]) {
+      return { statusCode: 200, message: `Check run action '${action}' disabled by config.`, channelId: null, messageId: null };
+    }
+  } else {
+    // Default behavior if no config: allow 'completed'
+    if (action !== 'completed') {
+      return { statusCode: 200, message: 'Check run event not configured; skipping.', channelId: null, messageId: null };
+    }
+  }
+
   // Try to resolve branch from check_suite; fall back to repo default channel
   const branch = (checkRun && checkRun.check_suite && checkRun.check_suite.head_branch) ? checkRun.check_suite.head_branch : null;
 
@@ -97,7 +129,8 @@ async function handleCheckRunEvent(req, res, payload, prisma, botClient, repoCon
       if (matchingBranches.length > 0) {
         let lastMessageInfo = { channelId: null, messageId: null };
         for (const trackedBranch of matchingBranches) {
-          const channelId = trackedBranch.channelId || repoContext.notificationChannelId || 'pending';
+          // Use tracked branch channel if set, otherwise use the routed channel for this event type
+          const channelId = trackedBranch.channelId || routedChannelId || 'pending';
           if (channelId === 'pending') { continue; }
 
           try {
@@ -152,7 +185,8 @@ async function handleCheckRunEvent(req, res, payload, prisma, botClient, repoCon
   }
 
   // Fallback: send to repository default channel
-  const channelId = repoContext.notificationChannelId || 'pending';
+  // Fallback: send to repository default channel (or routed channel)
+  const channelId = routedChannelId || 'pending';
   if (channelId === 'pending') {
     console.warn(`Notification channel pending for repository ${repoUrl} on server ${serverConfig.guildId}`);
     return { statusCode: 200, message: 'Check run event acknowledged, notification channel pending.', channelId: null, messageId: null };

@@ -3,41 +3,7 @@
  * This file contains handlers for pull request review and review comment events
  */
 
-// Helper: resolve routing and config for pull_request event
-async function getPullRequestRouting(prisma, repoContext, fallbackChannelId) {
-  try {
-    let mapping = await prisma.repositoryEventChannel.findFirst({
-      where: { repositoryId: repoContext.id, eventType: 'pull_request' }
-    });
-
-    // Auto-create a default mapping/config if missing to avoid silent skips
-    if (!mapping) {
-      const defaultConfig = { actionsEnabled: { opened: true, closed: true, reopened: true, comments: false }, explicitChannel: false };
-      mapping = await prisma.repositoryEventChannel.create({
-        data: {
-          repositoryId: repoContext.id,
-          eventType: 'pull_request',
-          channelId: 'default',
-          config: defaultConfig
-        }
-      });
-    }
-
-    // Resolve effective channel:
-    // - If channelId is the 'default' sentinel, use fallback
-    // - If channelId matches fallback and not explicitly set, treat as default
-    // - Otherwise use the stored channelId
-    const explicit = mapping.config && mapping.config.explicitChannel === true;
-    const effectiveChannelId = (mapping.channelId === 'default' || (!explicit && mapping.channelId === fallbackChannelId))
-      ? (fallbackChannelId || 'pending')
-      : (mapping.channelId || fallbackChannelId || 'pending');
-
-    return { channelId: effectiveChannelId, config: mapping.config || null };
-  } catch (e) {
-    console.error('getPullRequestRouting error:', e);
-    return { channelId: fallbackChannelId || 'pending', config: null };
-  }
-}
+const { getEventRouting } = require('../functions/eventRouting');
 
 /**
  * Handles pull request review events
@@ -51,7 +17,7 @@ async function handlePRReviewEvent(req, res, payload, prisma, botClient, repoCon
   const prNumber = payload.pull_request.number;
   const prTitle = payload.pull_request.title;
   const reviewUrl = payload.review.html_url;
-  
+
   console.log(`PR Review ${action} (${reviewState}) on PR #${prNumber} in ${repoUrl} by ${username}`);
 
   // We'll focus on the submitted action as it's the most important
@@ -60,8 +26,36 @@ async function handlePRReviewEvent(req, res, payload, prisma, botClient, repoCon
   }
 
   const serverConfig = repoContext.server;
-  // Route using pull_request mapping and honor config
-  const { channelId, config } = await getPullRequestRouting(prisma, repoContext, repoContext.notificationChannelId);
+  // Route using pull_request mapping
+  // Determine emoji and color based on review state
+  let emoji, color;
+  switch (reviewState) {
+    case 'approved':
+      emoji = '✅';
+      color = 0x2CBE4E; // Green
+      break;
+    case 'changes_requested':
+      emoji = '❌';
+      color = 0xD73A49; // Red
+      break;
+    case 'commented':
+      emoji = '💬';
+      color = 0x0366D6; // Blue
+      break;
+    case 'dismissed':
+      emoji = '⏭️';
+      color = 0xA0A0A0; // Grey
+      break;
+    default:
+      emoji = '📝';
+      color = 0x0366D6; // Blue
+  }
+
+  // If this is a comment-only review notification and comments are not explicitly enabled, skip
+  // This logic needs to be re-evaluated if getPullRequestRouting is removed.
+  // For now, assuming we proceed without config checks here.
+
+  const { channelId, config } = await getEventRouting(prisma, repoContext, 'pull_request', repoContext.notificationChannelId);
 
   // If this is a comment-only review notification and comments are not explicitly enabled, skip
   if (reviewState === 'commented') {
@@ -101,13 +95,13 @@ async function handlePRReviewEvent(req, res, payload, prisma, botClient, repoCon
           emoji = '📝';
           color = 0x0366D6; // Blue
       }
-      
+
       // Format the state nicely
       const formattedState = reviewState
         .split('_')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
-      
+
       const embed = {
         color: color,
         title: `${emoji} PR #${prNumber} Review: ${formattedState}`,
@@ -122,15 +116,15 @@ async function handlePRReviewEvent(req, res, payload, prisma, botClient, repoCon
         timestamp: new Date().toISOString(),
         footer: { text: 'GitHub Pull Request Review' }
       };
-      
+
       // Add review comments if available
       if (payload.review.body) {
         const reviewBody = payload.review.body;
-        embed.description = reviewBody.length > 300 
-          ? reviewBody.substring(0, 300) + '...' 
+        embed.description = reviewBody.length > 300
+          ? reviewBody.substring(0, 300) + '...'
           : reviewBody;
       }
-      
+
       const sentMessage = await channel.send({ embeds: [embed] });
       console.log(`Sent PR review notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
@@ -168,7 +162,7 @@ async function handlePRReviewCommentEvent(req, res, payload, prisma, botClient, 
   const commentUrl = payload.comment.html_url;
   const commentBody = payload.comment.body || '';
   const path = payload.comment.path; // File being commented on
-  
+
   console.log(`PR Review Comment ${action} on PR #${prNumber} in ${repoUrl} by ${username}`);
 
   // Only notify for new comments
@@ -178,7 +172,7 @@ async function handlePRReviewCommentEvent(req, res, payload, prisma, botClient, 
 
   const serverConfig = repoContext.server;
   // Route using pull_request mapping and honor config
-  const { channelId, config } = await getPullRequestRouting(prisma, repoContext, repoContext.notificationChannelId);
+  const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'pull_request', repoContext.notificationChannelId);
 
   // Require explicit enablement of PR comments
   if (!config || !config.actionsEnabled || !config.actionsEnabled['comments']) {
@@ -195,7 +189,7 @@ async function handlePRReviewCommentEvent(req, res, payload, prisma, botClient, 
     if (channel && channel.isTextBased()) {
       const emoji = '💬';
       const color = 0x0366D6; // Blue
-      
+
       const embed = {
         color: color,
         title: `${emoji} New PR #${prNumber} Line Comment`,
@@ -210,7 +204,7 @@ async function handlePRReviewCommentEvent(req, res, payload, prisma, botClient, 
         timestamp: new Date().toISOString(),
         footer: { text: 'GitHub PR Code Comment' }
       };
-      
+
       // Extract line number information if available
       if (payload.comment.line) {
         let lineInfo = `Line ${payload.comment.line}`;
@@ -219,21 +213,21 @@ async function handlePRReviewCommentEvent(req, res, payload, prisma, botClient, 
         }
         embed.fields.push({ name: 'Location', value: lineInfo, inline: true });
       }
-      
+
       // Add comment snippet if available
       if (commentBody) {
         // Only take first paragraph of comment for brevity
         const firstParagraph = commentBody.split('\n')[0];
-        embed.description = firstParagraph.length > 300 
-          ? firstParagraph.substring(0, 300) + '...' 
+        embed.description = firstParagraph.length > 300
+          ? firstParagraph.substring(0, 300) + '...'
           : firstParagraph;
-          
+
         // If there's more content, indicate it
         if (commentBody.split('\n').length > 1 || commentBody.length > 300) {
           embed.description += '\n\n*[See full comment on GitHub]*';
         }
       }
-      
+
       // Add code sample if available
       if (payload.comment.diff_hunk) {
         // Extract just a small part of the diff to show context
@@ -241,16 +235,16 @@ async function handlePRReviewCommentEvent(req, res, payload, prisma, botClient, 
         // Take up to 3 lines of context
         const contextLines = diffLines.slice(Math.max(0, diffLines.length - 3));
         const codePreview = '```diff\n' + contextLines.join('\n') + '\n```';
-        
-        embed.fields.push({ 
-          name: 'Code Context', 
-          value: codePreview.length > 1024 
-            ? codePreview.substring(0, 1020) + '...\n```' 
-            : codePreview, 
-          inline: false 
+
+        embed.fields.push({
+          name: 'Code Context',
+          value: codePreview.length > 1024
+            ? codePreview.substring(0, 1020) + '...\n```'
+            : codePreview,
+          inline: false
         });
       }
-      
+
       const sentMessage = await channel.send({ embeds: [embed] });
       console.log(`Sent PR review comment notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 

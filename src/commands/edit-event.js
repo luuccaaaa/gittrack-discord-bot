@@ -10,6 +10,8 @@ const ROUTABLE_EVENTS = [
   { name: 'create', value: 'create' },
   { name: 'delete', value: 'delete' },
   { name: 'milestone', value: 'milestone' },
+  { name: 'workflow_job', value: 'workflow_job' },
+  { name: 'check_run', value: 'check_run' },
 ];
 
 // Minimal action presets per event (extendable)
@@ -21,7 +23,9 @@ const EVENT_ACTION_PRESETS = {
   fork: ['created'],
   create: ['created'],
   delete: ['deleted'],
-  milestone: ['created', 'closed', 'opened']
+  milestone: ['created', 'closed', 'opened'],
+  workflow_job: ['completed'],
+  check_run: ['completed'],
 };
 
 function formatRepoUrlForDisplay(url) {
@@ -223,7 +227,7 @@ module.exports = {
       collector.on('end', async () => {
         try {
           await interaction.editReply({ components: [] });
-        } catch {}
+        } catch { }
       });
     } catch (error) {
       console.error('Error in /edit-event:', error);
