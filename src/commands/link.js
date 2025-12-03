@@ -1,6 +1,7 @@
 const djs = require('discord.js'); // Import the whole module
 const { SlashCommandBuilder } = require('discord.js');
 const { checkRepositoryLimit, checkChannelLimit } = require('../functions/limitChecker');
+const { isValidBranchPattern } = require('../functions/branchMatcher');
 
 // Helper function to extract owner and repo from GitHub URL
 function extractOwnerAndRepo(url) {
@@ -48,14 +49,6 @@ async function fetchBranches(repoUrl) {
     console.error('Error fetching branches:', error);
     return [];
   }
-}
-
-// Helper function to validate branch pattern
-function isValidBranchPattern(pattern) {
-  // Allow alphanumeric, hyphens, underscores, dots, slashes, asterisks, and ! for negation
-  // Negation patterns start with ! (e.g., !main, !feature/*)
-  const validPattern = /^!?[a-zA-Z0-9\-_.\/*]+$/;
-  return validPattern.test(pattern);
 }
 
 module.exports = {
