@@ -10,6 +10,7 @@ const ROUTABLE_EVENTS = [
   { name: 'delete', value: 'delete' },
   { name: 'pull_request', value: 'pull_request' },
   { name: 'milestone', value: 'milestone' },
+  { name: 'workflow_run', value: 'workflow_run' },
   { name: 'workflow_job', value: 'workflow_job' },
   { name: 'check_run', value: 'check_run' },
 ];

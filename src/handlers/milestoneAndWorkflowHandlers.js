@@ -122,9 +122,13 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
   const conclusion = workflow.conclusion; // success, failure, cancelled, etc.
   const branch = workflow.head_branch;
 
-  // Only send notifications for completed workflow runs
-  if (action !== 'completed') {
-    return { statusCode: 200, message: 'Workflow run event acknowledged.', channelId: null, messageId: null };
+  // Check configuration - require explicit enablement for each action
+  const { getEventRouting } = require('../functions/eventRouting');
+  const { config } = await getEventRouting(prisma, repoContext.id, 'workflow_run', repoContext.notificationChannelId);
+
+  // Only allow if action is explicitly enabled (true)
+  if (!config || !config.actionsEnabled || config.actionsEnabled[action] !== true) {
+    return { statusCode: 200, message: `Workflow run action '${action}' not enabled.`, channelId: null, messageId: null };
   }
 
   console.log(`Workflow run "${workflowName}" ${action} with conclusion "${conclusion}" in ${repoUrl} on branch ${branch}`);

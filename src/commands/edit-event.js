@@ -10,6 +10,7 @@ const ROUTABLE_EVENTS = [
   { name: 'create', value: 'create' },
   { name: 'delete', value: 'delete' },
   { name: 'milestone', value: 'milestone' },
+  { name: 'workflow_run', value: 'workflow_run' },
   { name: 'workflow_job', value: 'workflow_job' },
   { name: 'check_run', value: 'check_run' },
 ];
@@ -24,6 +25,7 @@ const EVENT_ACTION_PRESETS = {
   create: ['created'],
   delete: ['deleted'],
   milestone: ['created', 'closed', 'opened'],
+  workflow_run: ['completed', 'requested'],
   workflow_job: ['queued', 'in_progress', 'completed', 'waiting'],
   check_run: ['created', 'requested', 'rerequested', 'completed'],
 };

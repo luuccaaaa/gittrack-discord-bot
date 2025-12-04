@@ -5,9 +5,11 @@ async function getEventRouting(prisma, repositoryId, eventType, fallbackChannelI
             where: { repositoryId, eventType }
         });
 
+        const defaultActions = getDefaultActionsForEvent(eventType);
+
         // Auto-create a default mapping/config if missing to avoid silent skips
         if (!mapping) {
-            const defaultConfig = { actionsEnabled: getDefaultActionsForEvent(eventType), explicitChannel: false };
+            const defaultConfig = { actionsEnabled: defaultActions, explicitChannel: false };
             mapping = await prisma.repositoryEventChannel.create({
                 data: {
                     repositoryId,
@@ -18,6 +20,15 @@ async function getEventRouting(prisma, repositoryId, eventType, fallbackChannelI
             });
         }
 
+        // Merge default actions with existing config to ensure new actions have defaults
+        // User-configured values take precedence over defaults
+        const existingActions = (mapping.config && mapping.config.actionsEnabled) || {};
+        const mergedActions = { ...defaultActions, ...existingActions };
+        const mergedConfig = {
+            ...mapping.config,
+            actionsEnabled: mergedActions
+        };
+
         // Resolve effective channel:
         // - If channelId is the 'default' sentinel, use fallback
         // - If channelId matches fallback and not explicitly set, treat as default
@@ -27,7 +38,7 @@ async function getEventRouting(prisma, repositoryId, eventType, fallbackChannelI
             ? (fallbackChannelId || 'pending')
             : (mapping.channelId || fallbackChannelId || 'pending');
 
-        return { channelId: effectiveChannelId, config: mapping.config || null };
+        return { channelId: effectiveChannelId, config: mergedConfig };
     } catch (e) {
         console.error('getEventRouting error:', e);
         return { channelId: fallbackChannelId || 'pending', config: null };
@@ -55,6 +66,8 @@ function getDefaultActionsForEvent(eventType) {
             return { created: true, opened: true, closed: true };
         case 'ping':
             return { ping: true };
+        case 'workflow_run':
+            return { completed: true, requested: false };
         case 'workflow_job':
             return { queued: false, in_progress: false, completed: true, waiting: false };
         case 'check_run':
