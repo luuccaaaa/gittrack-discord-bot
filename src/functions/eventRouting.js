@@ -56,9 +56,9 @@ function getDefaultActionsForEvent(eventType) {
         case 'ping':
             return { ping: true };
         case 'workflow_job':
-            return { completed: true };
+            return { queued: false, in_progress: false, completed: true, waiting: false };
         case 'check_run':
-            return { completed: true };
+            return { created: false, requested: false, rerequested: false, completed: true };
         default:
             return {}; // Unknown events get empty config
     }

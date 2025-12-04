@@ -24,8 +24,8 @@ const EVENT_ACTION_PRESETS = {
   create: ['created'],
   delete: ['deleted'],
   milestone: ['created', 'closed', 'opened'],
-  workflow_job: ['completed'],
-  check_run: ['completed'],
+  workflow_job: ['queued', 'in_progress', 'completed', 'waiting'],
+  check_run: ['created', 'requested', 'rerequested', 'completed'],
 };
 
 function formatRepoUrlForDisplay(url) {
