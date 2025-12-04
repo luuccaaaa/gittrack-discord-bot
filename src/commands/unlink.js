@@ -12,7 +12,7 @@ module.exports = {
         .setAutocomplete(true))
     .addStringOption(option =>
       option.setName('branch')
-        .setDescription('Select the branch pattern to unlink (e.g., main, features/*, * for all)')
+        .setDescription('Branch pattern to unlink (e.g., main, *, features/*, !main)')
         .setRequired(true)
         .setAutocomplete(true))
     .addChannelOption(option =>
@@ -208,11 +208,11 @@ module.exports = {
         // Return default branches if URL isn't provided yet
         return interaction.respond([
           { name: '* (All branches)', value: '*' },
+          { name: '!main (All except main)', value: '!main' },
           { name: 'main', value: 'main' },
           { name: 'master', value: 'master' },
           { name: 'develop', value: 'develop' },
           { name: 'features/* (All feature branches)', value: 'features/*' },
-          { name: 'hotfix/* (All hotfix branches)', value: 'hotfix/*' },
         ]);
       }
 
@@ -270,6 +270,7 @@ module.exports = {
           // Default options if repository or branches not found
           await interaction.respond([
             { name: '* (All branches)', value: '*' },
+            { name: '!main (All except main)', value: '!main' },
             { name: 'main', value: 'main' },
             { name: 'master', value: 'master' },
             { name: 'develop', value: 'develop' },
@@ -282,11 +283,11 @@ module.exports = {
         // Add the user's typed value as an option even on error
         const options = [
           { name: '* (All branches)', value: '*' },
+          { name: '!main (All except main)', value: '!main' },
           { name: 'main', value: 'main' },
           { name: 'master', value: 'master' },
           { name: 'develop', value: 'develop' },
           { name: 'features/* (All feature branches)', value: 'features/*' },
-          { name: 'hotfix/* (All hotfix branches)', value: 'hotfix/*' },
         ];
         
         // If user has typed something, add it as the first option

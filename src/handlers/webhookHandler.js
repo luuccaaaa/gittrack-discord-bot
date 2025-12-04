@@ -995,6 +995,11 @@ function initializeWebServer(prisma, botClient) {
               inline: false
             },
             {
+              name: '🚫 Exclude a branch (negation)',
+              value: `\`/link repo-url !main #channel\`\nUse \`!branch\` to track all branches except the specified one.`,
+              inline: false
+            },
+            {
               name: '📖 Need help?',
               value: 'Use `/help` to see all available commands and their usage.',
               inline: false

@@ -62,7 +62,7 @@ module.exports = {
         .setAutocomplete(true)) // Enabled autocomplete for URL
     .addStringOption(option =>
       option.setName('branch')
-        .setDescription('The branch to track (e.g., main, features/*, hotfix/*) or * for all branches')
+        .setDescription('Branch pattern (e.g., main, *, features/*, !main, !release/*)')
         .setRequired(true)
         .setAutocomplete(true))
     .addChannelOption(option =>
@@ -338,14 +338,19 @@ module.exports = {
 
         const branches = await fetchBranches(urlOption);
 
-        // Add common patterns
-        const choices = [
+        // Add common patterns including negation examples
+        const patterns = [
           { name: 'All branches (*)', value: '*' },
-          ...branches.map(branch => ({
-            name: branch,
-            value: branch
-          }))
+          { name: 'All except main (!main)', value: '!main' },
         ];
+
+        // Add fetched branches and their negation variants
+        const branchChoices = branches.flatMap(branch => [
+          { name: branch, value: branch },
+          { name: `All except ${branch} (!${branch})`, value: `!${branch}` }
+        ]);
+
+        const choices = [...patterns, ...branchChoices];
 
         await interaction.respond(choices.slice(0, 25));
       } catch (error) {

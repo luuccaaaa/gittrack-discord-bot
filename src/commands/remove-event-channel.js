@@ -10,6 +10,8 @@ const ROUTABLE_EVENTS = [
   'delete',
   'pull_request',
   'milestone',
+  'workflow_job',
+  'check_run',
 ];
 
 module.exports = {
