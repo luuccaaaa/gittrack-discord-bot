@@ -10,8 +10,10 @@ const ROUTABLE_EVENTS = [
   { name: 'create', value: 'create' },
   { name: 'delete', value: 'delete' },
   { name: 'milestone', value: 'milestone' },
+  { name: 'workflow_run', value: 'workflow_run' },
   { name: 'workflow_job', value: 'workflow_job' },
   { name: 'check_run', value: 'check_run' },
+  { name: 'check_suite', value: 'check_suite' },
 ];
 
 // Minimal action presets per event (extendable)
@@ -24,8 +26,10 @@ const EVENT_ACTION_PRESETS = {
   create: ['created'],
   delete: ['deleted'],
   milestone: ['created', 'closed', 'opened'],
-  workflow_job: ['completed'],
-  check_run: ['completed'],
+  workflow_run: ['completed', 'requested'],
+  workflow_job: ['queued', 'in_progress', 'completed', 'waiting'],
+  check_run: ['created', 'requested', 'rerequested', 'completed'],
+  check_suite: ['requested', 'rerequested', 'completed'],
 };
 
 function formatRepoUrlForDisplay(url) {

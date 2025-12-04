@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const querystring = require('querystring');
 const { handleMilestoneEvent, handleWorkflowRunEvent } = require('./milestoneAndWorkflowHandlers');
-const { handleWorkflowJobEvent, handleCheckRunEvent } = require('./checksHandlers');
+const { handleWorkflowJobEvent, handleCheckRunEvent, handleCheckSuiteEvent } = require('./checksHandlers');
 const { handlePRReviewEvent, handlePRReviewCommentEvent } = require('./pullRequestHandlers');
 const { checkChannelLimit } = require('../functions/limitChecker');
 const { findMatchingBranches } = require('../functions/branchMatcher');
@@ -192,6 +192,8 @@ function initializeWebServer(prisma, botClient) {
           return await handleEventWithLogging(handleWorkflowJobEvent, req, res, payload, prisma, botClient, validatedRepositoryContext, loggingContext);
         case 'check_run':
           return await handleEventWithLogging(handleCheckRunEvent, req, res, payload, prisma, botClient, validatedRepositoryContext, loggingContext);
+        case 'check_suite':
+          return await handleEventWithLogging(handleCheckSuiteEvent, req, res, payload, prisma, botClient, validatedRepositoryContext, loggingContext);
         case 'ping':
           return await handleEventWithLogging(handlePingEvent, req, res, payload, prisma, botClient, validatedRepositoryContext, loggingContext);
         default:
@@ -992,6 +994,11 @@ function initializeWebServer(prisma, botClient) {
             {
               name: '🌟 Link all branches (wildcard)',
               value: `\`/link repo-url * #channel\`\nUse \`*\` to track all branches in the repository.`,
+              inline: false
+            },
+            {
+              name: '🚫 Exclude a branch (negation)',
+              value: `\`/link repo-url !main #channel\`\nUse \`!branch\` to track all branches except the specified one.`,
               inline: false
             },
             {
