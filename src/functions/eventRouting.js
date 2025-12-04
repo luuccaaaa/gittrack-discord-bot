@@ -72,6 +72,8 @@ function getDefaultActionsForEvent(eventType) {
             return { queued: false, in_progress: false, completed: true, waiting: false };
         case 'check_run':
             return { created: false, requested: false, rerequested: false, completed: true };
+        case 'check_suite':
+            return { requested: false, rerequested: false, completed: true };
         default:
             return {}; // Unknown events get empty config
     }
