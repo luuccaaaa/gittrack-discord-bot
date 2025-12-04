@@ -123,7 +123,6 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
   const branch = workflow.head_branch;
 
   // Check configuration - require explicit enablement for each action
-  const { getEventRouting } = require('../functions/eventRouting');
   const { config } = await getEventRouting(prisma, repoContext.id, 'workflow_run', repoContext.notificationChannelId);
 
   // Only allow if action is explicitly enabled (true)
