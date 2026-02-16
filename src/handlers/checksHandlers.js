@@ -59,6 +59,7 @@ async function handleWorkflowJobEvent(req, res, payload, prisma, botClient, repo
         url,
         fields: [
           { name: 'Repository', value: `[${payload.repository.full_name}](${repoUrl})`, inline: true },
+          { name: 'Branch', value: job.head_branch || 'unknown', inline: true },
           { name: 'Status', value: job.status || 'unknown', inline: true },
         ],
         timestamp: job.completed_at || new Date().toISOString(),
