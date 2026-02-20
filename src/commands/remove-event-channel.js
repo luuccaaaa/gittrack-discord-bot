@@ -76,7 +76,7 @@ module.exports = {
           .filter(ev => ev.toLowerCase().includes((focused.value || '').toLowerCase()))
           .slice(0, 25)
           .map(ev => ({ name: ev, value: ev }));
-        if (filtered.length > 0) return interaction.respond(filtered);
+        if (filtered.length > 0) {return interaction.respond(filtered);}
 
         // Fallback: show routable events to guide user
         return interaction.respond(ROUTABLE_EVENTS.map(ev => ({ name: ev, value: ev })).slice(0, 25));

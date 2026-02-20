@@ -47,6 +47,14 @@ function initializeWebServer(prisma, botClient) {
     res.send('GitTrack Webhook Handler is alive!');
   });
 
+  app.get('/health', (req, res) => {
+    res.status(200).json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    });
+  });
+
   app.post('/github-webhook', async (req, res) => {
     // Check content type first
     const contentType = req.headers['content-type'];
@@ -87,7 +95,8 @@ function initializeWebServer(prisma, botClient) {
     const repoUrl = payload.repository.html_url;
     const signature = req.headers['x-hub-signature-256'];
     const event = req.headers['x-github-event'];
-    const requestBody = req.rawBody; // Use raw body for signature validation
+    const startTime = Date.now();
+    let validatedRepositoryContext = null;
 
     try {
       const possibleUrls = [repoUrl];
@@ -113,8 +122,6 @@ function initializeWebServer(prisma, botClient) {
         // Optional: Notify relevant server(s) about missing signature (current logic can be kept or adapted)
         return res.status(401).send('No signature provided');
       }
-
-      let validatedRepositoryContext = null;
 
       for (const repoEntry of candidateRepositories) {
         const secretToUse = repoEntry.webhookSecret || process.env.GITHUB_WEBHOOK_SECRET;
@@ -154,9 +161,6 @@ function initializeWebServer(prisma, botClient) {
       }
 
       // Event verified successfully - no need to log every webhook
-
-      // Track processing time for error logging
-      const startTime = Date.now();
 
       // Pass validatedRepositoryContext to handlers
       const loggingContext = { startTime, event, action: payload.action };
@@ -395,7 +399,7 @@ function initializeWebServer(prisma, botClient) {
     for (const tbConfig of trackedBranchConfigs) {
       // Use the repository-specific notification channel, fall back to branch-specific channel if set
       const channelId = tbConfig.channelId || repoContext.notificationChannelId || 'pending';
-      if (channelId === 'pending') continue;
+      if (channelId === 'pending') {continue;}
 
       try {
         // Check channel limits before sending notification
@@ -503,7 +507,7 @@ function initializeWebServer(prisma, botClient) {
       return { statusCode: 200, message: 'Pull request event not configured; skipping.', channelId: null, messageId: null };
     }
 
-    if (channelId === 'pending') return { statusCode: 200, message: 'PR event ack, channel pending.', channelId: null, messageId: null };
+    if (channelId === 'pending') {return { statusCode: 200, message: 'PR event ack, channel pending.', channelId: null, messageId: null };}
 
     try {
       // Check channel limits before sending notification
@@ -582,7 +586,7 @@ function initializeWebServer(prisma, botClient) {
       return { statusCode: 200, message: 'Issue event not configured; skipping.', channelId: null, messageId: null };
     }
 
-    if (channelId === 'pending') return { statusCode: 200, message: 'Issue event ack, channel pending.', channelId: null, messageId: null };
+    if (channelId === 'pending') {return { statusCode: 200, message: 'Issue event ack, channel pending.', channelId: null, messageId: null };}
 
     try {
       // Check channel limits before sending notification
@@ -645,7 +649,7 @@ function initializeWebServer(prisma, botClient) {
       return { statusCode: 200, message: `Star action '${action}' disabled by config.`, channelId: null, messageId: null };
     }
 
-    if (channelId === 'pending') return { statusCode: 200, message: 'Star event ack, channel pending.', channelId: null, messageId: null };
+    if (channelId === 'pending') {return { statusCode: 200, message: 'Star event ack, channel pending.', channelId: null, messageId: null };}
 
     try {
       // Check channel limits before sending notification
@@ -699,7 +703,7 @@ function initializeWebServer(prisma, botClient) {
 
   async function handleReleaseEvent(req, res, payload, prisma, botClient, repoContext) {
     // Only handle the canonical 'published' action to avoid duplicate notifications
-    if (payload.action !== 'published') return { statusCode: 200, message: `Release event '${payload.action}' ignored (only 'published' is handled).`, channelId: null, messageId: null };
+    if (payload.action !== 'published') {return { statusCode: 200, message: `Release event '${payload.action}' ignored (only 'published' is handled).`, channelId: null, messageId: null };}
     const repoUrl = payload.repository.html_url;
     const release = payload.release;
     const serverConfig = repoContext.server;
@@ -710,7 +714,7 @@ function initializeWebServer(prisma, botClient) {
       return { statusCode: 200, message: `Release action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
     }
 
-    if (channelId === 'pending') return { statusCode: 200, message: 'Release event ack, channel pending.', channelId: null, messageId: null };
+    if (channelId === 'pending') {return { statusCode: 200, message: 'Release event ack, channel pending.', channelId: null, messageId: null };}
 
     try {
       // Check channel limits before sending notification
@@ -736,7 +740,7 @@ function initializeWebServer(prisma, botClient) {
           timestamp: release.published_at || new Date().toISOString(),
           footer: { text: `GitHub Release` }
         };
-        if (release.body) { let body = release.body; if (body.length > 1500) body = body.substring(0, 1497) + '...'; embed.description = body; }
+        if (release.body) { let body = release.body; if (body.length > 1500) {body = body.substring(0, 1497) + '...';} embed.description = body; }
         const sentMessage = await channel.send({ embeds: [embed] });
         console.log(`Sent release notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
@@ -768,7 +772,7 @@ function initializeWebServer(prisma, botClient) {
       return { statusCode: 200, message: `Fork action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
     }
 
-    if (channelId === 'pending') return { statusCode: 200, message: 'Fork event ack, channel pending.', channelId: null, messageId: null };
+    if (channelId === 'pending') {return { statusCode: 200, message: 'Fork event ack, channel pending.', channelId: null, messageId: null };}
 
     try {
       // Check channel limits before sending notification
@@ -825,7 +829,7 @@ function initializeWebServer(prisma, botClient) {
       return { statusCode: 200, message: `Create action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
     }
 
-    if (channelId === 'pending') return { statusCode: 200, message: 'Create event ack, channel pending.', channelId: null, messageId: null };
+    if (channelId === 'pending') {return { statusCode: 200, message: 'Create event ack, channel pending.', channelId: null, messageId: null };}
 
     // Additional check: if it's a branch, only send if a wildcard ('*') is tracked for this repo on this server,
     // or if the specific branch being created was pre-emptively tracked (less common for 'create').
@@ -893,7 +897,7 @@ function initializeWebServer(prisma, botClient) {
       return { statusCode: 200, message: `Delete action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
     }
 
-    if (channelId === 'pending') return { statusCode: 200, message: 'Delete event ack, channel pending.', channelId: null, messageId: null };
+    if (channelId === 'pending') {return { statusCode: 200, message: 'Delete event ack, channel pending.', channelId: null, messageId: null };}
 
     try {
       // Check channel limits before sending notification
@@ -955,7 +959,7 @@ function initializeWebServer(prisma, botClient) {
     try {
       // Check channel limits before sending notification
       // For ping events, we'll always send the notification with a warning if needed, but won't block
-      const canSendNotification = await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
+      await checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId);
 
       // Always continue with ping events to ensure webhook setup works
 
@@ -1057,7 +1061,7 @@ async function tryNotifyContentTypeError(req, prisma, botClient) {
           }
 
         }
-      } catch (e) {
+      } catch {
 
       }
     }
@@ -1174,9 +1178,6 @@ async function tryNotifyContentTypeError(req, prisma, botClient) {
 // Helper function to check channel limits and send warnings if needed
 async function checkChannelLimitAndWarn(prisma, botClient, repoContext, channelId) {
   try {
-    // Get repo default channel for reference
-    const repoDefaultChannel = repoContext.notificationChannelId;
-
     // Don't skip default channels - they should be counted if used explicitly for branch tracking
     // (that logic is handled in the checkChannelLimit function)
 
@@ -1231,9 +1232,6 @@ async function checkChannelLimitAndWarn(prisma, botClient, repoContext, channelI
 async function handleEventWithLogging(handler, req, res, payload, prisma, botClient, repoContext, loggingContext) {
   const { startTime, event, action } = loggingContext;
   let result;
-  let channelId = null;
-  let messageId = null;
-  let errorMessage = null;
   let responseSent = false;
 
   // Helper function to send response only once
@@ -1248,12 +1246,6 @@ async function handleEventWithLogging(handler, req, res, payload, prisma, botCli
 
   try {
     result = await handler(req, res, payload, prisma, botClient, repoContext);
-
-    // Extract channelId and messageId from result if handler returns them
-    if (result && typeof result === 'object') {
-      channelId = result.channelId || null;
-      messageId = result.messageId || null;
-    }
 
     // Send the HTTP response based on the handler result
     let responseMessage = 'Event processed successfully';
@@ -1272,8 +1264,6 @@ async function handleEventWithLogging(handler, req, res, payload, prisma, botCli
     return responsePromise;
   } catch (error) {
     console.error(`Error in ${event} handler:`, error);
-    errorMessage = error.message;
-
     // Send error response immediately
     const responsePromise = sendResponse(500, 'Webhook processing failed');
 
