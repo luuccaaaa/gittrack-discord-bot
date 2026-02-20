@@ -12,17 +12,15 @@ services:
       - PORT=3000
     ports:
       - "3000:3000"
-      - "5555:5555"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - ../logs:/app/logs
-      # Hot reloading: Mount source code for live updates
+      - ../logs:/usr/src/app/logs
       - ..:/usr/src/app
       - /usr/src/app/node_modules
     command: >
-      sh -c "npx prisma db push && (npm run dev & npx prisma studio --browser none) && wait"
+      sh -c "npx prisma db push && npm run dev"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -37,13 +35,11 @@ services:
     container_name: gittrack-postgres
     restart: unless-stopped
     environment:
-      # - DATABASE_URL=postgresql://gittrack:password@localhost:5432/gittrack
       - POSTGRES_DB=gittrack
       - POSTGRES_USER=gittrack
       - POSTGRES_PASSWORD=password
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ../prisma/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
     healthcheck:
@@ -55,9 +51,34 @@ services:
     networks:
       - gittrack-network
 
+  prisma-studio:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: gittrack-prisma-studio
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      - NODE_ENV=development
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5555:5555"
+    volumes:
+      - ..:/usr/src/app
+      - /usr/src/app/node_modules
+    command: >
+      sh -c "npx prisma studio --browser none --hostname 0.0.0.0 --port 5555"
+    profiles:
+      - tools
+    networks:
+      - gittrack-network
+
 volumes:
   postgres_data:
 
 networks:
   gittrack-network:
-    driver: bridge 
+    driver: bridge

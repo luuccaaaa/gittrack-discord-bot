@@ -1,19 +1,14 @@
 {
   "watch": [
-    "index.js",
-    "bot.js",
-    "webhookHandler.js",
-    "milestoneAndWorkflowHandlers.js",
-    "pullRequestHandlers.js",
-    "commands/",
-    "functions/"
+    "src",
+    "config/nodemon.json",
+    "prisma/schema.prisma"
   ],
-  "ext": "js,json",
+  "ext": "js,json,prisma",
   "ignore": [
     "node_modules/",
     "logs/",
     "*.log",
-    "prisma/migrations/",
     ".git/"
   ],
   "env": {
@@ -21,4 +16,4 @@
   },
   "delay": "1000",
   "verbose": true
-} 
+}

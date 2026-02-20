@@ -47,6 +47,14 @@ function initializeWebServer(prisma, botClient) {
     res.send('GitTrack Webhook Handler is alive!');
   });
 
+  app.get('/health', (req, res) => {
+    res.status(200).json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    });
+  });
+
   app.post('/github-webhook', async (req, res) => {
     // Check content type first
     const contentType = req.headers['content-type'];
@@ -88,6 +96,8 @@ function initializeWebServer(prisma, botClient) {
     const signature = req.headers['x-hub-signature-256'];
     const event = req.headers['x-github-event'];
     const requestBody = req.rawBody; // Use raw body for signature validation
+    const startTime = Date.now();
+    let validatedRepositoryContext = null;
 
     try {
       const possibleUrls = [repoUrl];
@@ -113,8 +123,6 @@ function initializeWebServer(prisma, botClient) {
         // Optional: Notify relevant server(s) about missing signature (current logic can be kept or adapted)
         return res.status(401).send('No signature provided');
       }
-
-      let validatedRepositoryContext = null;
 
       for (const repoEntry of candidateRepositories) {
         const secretToUse = repoEntry.webhookSecret || process.env.GITHUB_WEBHOOK_SECRET;
@@ -154,9 +162,6 @@ function initializeWebServer(prisma, botClient) {
       }
 
       // Event verified successfully - no need to log every webhook
-
-      // Track processing time for error logging
-      const startTime = Date.now();
 
       // Pass validatedRepositoryContext to handlers
       const loggingContext = { startTime, event, action: payload.action };

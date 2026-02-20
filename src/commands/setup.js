@@ -126,7 +126,7 @@ module.exports = {
         // Always update notificationChannelId to the channel where command was called or specified
         updateData.notificationChannelId = notificationChannel.id;
         
-        repository = await prisma.repository.update({
+        await prisma.repository.update({
           where: { id: existingRepository.id },
           data: updateData
         });
@@ -152,7 +152,7 @@ module.exports = {
         // Always set notificationChannelId to the channel where command was called or specified
         repositoryData.notificationChannelId = notificationChannel.id;
         
-        repository = await prisma.repository.create({
+        await prisma.repository.create({
           data: repositoryData
         });
       }
