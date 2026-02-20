@@ -80,7 +80,7 @@ module.exports = {
 
         try {
           // Get the current server (guild) to update its notification channel
-          const server = await prisma.server.findUnique({
+          await prisma.server.findUnique({
             where: { guildId: interaction.guildId }
           });
 

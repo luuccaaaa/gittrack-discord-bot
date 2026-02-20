@@ -1,5 +1,4 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { describeBranchPattern } = require('../functions/branchMatcher');
 const { checkRepositoryLimit, checkChannelLimit, getMaxReposAllowed, getMaxChannelsAllowed } = require('../functions/limitChecker');
 
 module.exports = {
@@ -42,12 +41,6 @@ module.exports = {
       const repoLimit = await checkRepositoryLimit(prisma, server.id);
       const channelLimit = await checkChannelLimit(prisma, server.id);
 
-      // Get all tracked branches for server
-      const allTrackedBranchesForServer = await prisma.trackedBranch.findMany({
-        where: { repository: { serverId: server.id } },
-        select: { channelId: true },
-      });
-      
       // Create a map of all channels used for branch notifications
       const allUsedChannels = new Map(); // Maps channelId -> { count: number, isRepoDefault: boolean, isUsedExplicitly: boolean }
       
@@ -182,8 +175,8 @@ module.exports = {
             if (branchSet.size > 0) {
               // Convert set to array, sort with "*" always first
               const branches = Array.from(branchSet).sort((a, b) => {
-                if (a === '*') return -1;
-                if (b === '*') return 1;
+                if (a === '*') {return -1;}
+                if (b === '*') {return 1;}
                 return a.localeCompare(b);
               });
               
@@ -201,7 +194,7 @@ module.exports = {
           if (repo.eventChannels && repo.eventChannels.length > 0) {
             const byChannel = new Map(); // channelId -> [eventType]
             for (const ec of repo.eventChannels) {
-              if (!byChannel.has(ec.channelId)) byChannel.set(ec.channelId, []);
+              if (!byChannel.has(ec.channelId)) {byChannel.set(ec.channelId, []);}
               byChannel.get(ec.channelId).push(ec.eventType);
             }
             const lines = [];

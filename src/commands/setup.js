@@ -69,7 +69,7 @@ module.exports = {
         return;
       }
 
-    } catch (error) {
+    } catch {
       await interaction.editReply('Invalid repository URL format. Please provide a valid URL.');
       return;
     }
@@ -87,8 +87,8 @@ module.exports = {
 
       const possibleUrls = [standardizedUrl, `${standardizedUrl}.git`];
       // Add variants with and without trailing slash for matching existing entries if any
-      if (!possibleUrls.includes(`${standardizedUrl}/`)) possibleUrls.push(`${standardizedUrl}/`);
-      if (!possibleUrls.includes(`${standardizedUrl}.git/`)) possibleUrls.push(`${standardizedUrl}.git/`);
+      if (!possibleUrls.includes(`${standardizedUrl}/`)) {possibleUrls.push(`${standardizedUrl}/`);}
+      if (!possibleUrls.includes(`${standardizedUrl}.git/`)) {possibleUrls.push(`${standardizedUrl}.git/`);}
       
 
       // Ensure the server (guild) exists in the database

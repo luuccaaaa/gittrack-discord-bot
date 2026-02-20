@@ -1,4 +1,3 @@
-const djs = require('discord.js'); // Import the whole module
 const { SlashCommandBuilder } = require('discord.js');
 const { checkRepositoryLimit, checkChannelLimit } = require('../functions/limitChecker');
 const { isValidBranchPattern } = require('../functions/branchMatcher');
@@ -24,7 +23,7 @@ function extractOwnerAndRepo(url) {
 async function fetchBranches(repoUrl) {
   try {
     const { owner, repo } = extractOwnerAndRepo(repoUrl);
-    if (!owner || !repo) return [];
+    if (!owner || !repo) {return [];}
 
     const githubToken = process.env.GITHUB_TOKEN;
     const headers = {
@@ -92,7 +91,7 @@ module.exports = {
         await interaction.editReply('Please provide a valid GitHub repository URL.');
         return;
       }
-    } catch (error) {
+    } catch {
       await interaction.editReply('Invalid repository URL format. Please provide a valid URL.');
       return;
     }
@@ -168,14 +167,6 @@ module.exports = {
 
       // --- CHANNEL LIMIT LOGIC START ---
       const targetChannelForThisLink = notificationChannel.id;
-
-      // First, check if this channel is already being explicitly used (already in the database)
-      const isChannelAlreadyUsed = await prisma.trackedBranch.findFirst({
-        where: {
-          repository: { serverId: server.id },
-          channelId: targetChannelForThisLink
-        }
-      });
 
       // Get existing channels in use for user-friendly error message
       const trackedBranchesForServer = await prisma.trackedBranch.findMany({

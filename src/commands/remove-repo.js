@@ -148,7 +148,7 @@ module.exports = {
         ).slice(0, 25);
 
         await interaction.respond(filtered);
-      } catch (error) {
+      } catch {
         // Log concise error message instead of full error stack
         console.info('Repository autocomplete failed: Unable to fetch repositories');
         await interaction.respond([]);

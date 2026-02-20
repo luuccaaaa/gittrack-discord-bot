@@ -4,7 +4,7 @@
   "description": "A Discord bot that monitors GitHub repository activity and sends real-time notifications to Discord channels",
   "main": "src/index.js",
   "scripts": {
-    "lint": "eslint . --ext .js",
+    "lint": "eslint . --ext .js --max-warnings=0",
     "test": "node --test",
     "dev": "nodemon --config config/nodemon.json src/index.js",
     "start": "node src/index.js"
@@ -31,15 +31,15 @@
   "homepage": "https://github.com/luuccaaaa/gittrack-discord-bot#readme",
   "dependencies": {
     "@prisma/client": "^6.16.2",
-    "axios": "^1.12.2",
-    "discord.js": "^14.22.1",
-    "dotenv": "^17.2.2",
-    "express": "^5.1.0",
-    "pg": "^8.16.3"
+    "axios": "^1.13.5",
+    "discord.js": "^14.25.1",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "pg": "^8.18.0"
   },
   "devDependencies": {
-    "eslint": "^9.38.0",
-    "nodemon": "^3.1.10",
+    "eslint": "^10.0.1",
+    "nodemon": "^3.1.13",
     "prisma": "^6.16.2"
   },
   "engines": {

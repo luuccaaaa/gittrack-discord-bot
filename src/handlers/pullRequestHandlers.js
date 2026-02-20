@@ -27,29 +27,6 @@ async function handlePRReviewEvent(req, res, payload, prisma, botClient, repoCon
 
   const serverConfig = repoContext.server;
   // Route using pull_request mapping
-  // Determine emoji and color based on review state
-  let emoji, color;
-  switch (reviewState) {
-    case 'approved':
-      emoji = '✅';
-      color = 0x2CBE4E; // Green
-      break;
-    case 'changes_requested':
-      emoji = '❌';
-      color = 0xD73A49; // Red
-      break;
-    case 'commented':
-      emoji = '💬';
-      color = 0x0366D6; // Blue
-      break;
-    case 'dismissed':
-      emoji = '⏭️';
-      color = 0xA0A0A0; // Grey
-      break;
-    default:
-      emoji = '📝';
-      color = 0x0366D6; // Blue
-  }
 
   // If this is a comment-only review notification and comments are not explicitly enabled, skip
   // This logic needs to be re-evaluated if getPullRequestRouting is removed.

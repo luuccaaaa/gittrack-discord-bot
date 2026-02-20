@@ -5,7 +5,7 @@ module.exports = {
     .setName('help')
     .setDescription('Shows all available commands and their usage.'),
   
-  async execute(interaction, prisma) {
+  async execute(interaction, _prisma) {
     const embed = new EmbedBuilder()
       .setColor(0x0099ff)
       .setTitle('🤖 GitTrack Bot Commands')

@@ -168,7 +168,7 @@ module.exports = {
           row.addComponents(btn);
           count += 1;
         }
-        if (count > 0) rows.push(row);
+        if (count > 0) {rows.push(row);}
         // Add a close row
         rows.push(new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId(`edit_evt_close:${repository.id}:${eventType}`).setLabel('Close').setStyle(ButtonStyle.Danger)

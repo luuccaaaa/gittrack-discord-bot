@@ -31,7 +31,7 @@ async function initializeBot(prisma) {
     console.log(`Joined new guild: ${guild.name} (${guild.id})`);
     try {
       // Create or update the server entry in the database
-      const server = await prisma.server.upsert({
+      await prisma.server.upsert({
         where: { guildId: guild.id },
         update: { 
           name: guild.name,
@@ -86,7 +86,7 @@ async function initializeBot(prisma) {
     console.log(`Left guild: ${guild.name} (${guild.id})`);
     try {
       // Mark the server as inactive in the database
-      const server = await prisma.server.update({
+      await prisma.server.update({
         where: { guildId: guild.id },
         data: { status: 'INACTIVE' }
       });
@@ -160,7 +160,7 @@ async function initializeBot(prisma) {
   client.on('interactionCreate', async interaction => {
     if (interaction.isAutocomplete()) {
       const command = client.commands.get(interaction.commandName);
-      if (!command || !command.autocomplete) return;
+      if (!command || !command.autocomplete) {return;}
 
       try {
         await command.autocomplete(interaction, prisma);
@@ -170,10 +170,10 @@ async function initializeBot(prisma) {
       return;
     }
     
-    if (!interaction.isCommand()) return;
+    if (!interaction.isCommand()) {return;}
 
     const command = client.commands.get(interaction.commandName);
-    if (!command) return;
+    if (!command) {return;}
 
     // Define commands that don't require permission checks
     const publicCommands = ['help', 'status', 'ping'];

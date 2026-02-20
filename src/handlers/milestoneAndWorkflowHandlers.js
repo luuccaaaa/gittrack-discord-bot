@@ -296,8 +296,8 @@ function analyzeJobs(jobs) {
     const meta = statusMeta[conclusion];
 
     // Update counts
-    if (conclusion === 'success') passed += 1;
-    else if (conclusion === 'failure') failed += 1;
+    if (conclusion === 'success') {passed += 1;}
+    else if (conclusion === 'failure') {failed += 1;}
 
     // Format duration if available
     const duration = formatDuration(job.started_at, job.completed_at);
@@ -307,7 +307,6 @@ function analyzeJobs(jobs) {
       : `${wrapAnsi(meta.indicator, meta.color)} ${wrapAnsi(meta.label, meta.color)}`;
 
     return {
-      indicator: meta.indicator,
       name: job.name || 'Unnamed job',
       right
     };
@@ -322,7 +321,7 @@ function analyzeJobs(jobs) {
   const maxNameLength = Math.max(0, ...entries.map(({ name }) => name.length));
 
   // Format each entry with padding and ANSI codes
-  const formatted = entries.map(({ indicator, name, right }) => {
+  const formatted = entries.map(({ name, right }) => {
     const paddedName = name.padEnd(maxNameLength, ' ');
     const left = `\u001b[1;2m${paddedName}\u001b[0m`;
     return {
@@ -397,15 +396,15 @@ function formatDuration(start, end) {
 
 // Wrap text in ANSI color codes
 function wrapAnsi(text, color) {
-  if (!text) return '';
+  if (!text) {return '';}
   const code = /^\d+$/.test(color) ? color : ansiColorCode(color);
   return `\u001b[2;${code}m${text}\u001b[0m`;
 }
 
 function stripAnsi(input) {
-  if (!input) return '';
+  if (!input) {return '';}
   return input.replace(
-    // eslint-disable-next-line no-control-regex
+     
     /\u001b\[[0-9;]*m/g,
     ''
   );
