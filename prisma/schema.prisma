@@ -87,36 +87,6 @@ model ErrorLog {
   @@index([serverId, createdAt])
 }
 
-model SystemLog {
-  id        String    @id @default(cuid())
-  level     LogLevel  @default(INFO)
-  category  String    // auth, database, webhook, bot, api, etc.
-  message   String
-  details   Json?     // Additional details
-  userId    String?   // Admin user ID if applicable
-  ipAddress String?   // IP address for admin actions
-  createdAt DateTime  @default(now())
-
-  @@index([category, createdAt])
-  @@index([level, createdAt])
-}
-
-model Performance {
-  id              String    @id @default(cuid())
-  endpoint        String    // API endpoint or operation name
-  method          String?   // HTTP method if applicable
-  responseTime    Int       // Response time in milliseconds
-  statusCode      Int?      // HTTP status code
-  memoryUsage     Float?    // Memory usage in MB
-  cpuUsage        Float?    // CPU usage percentage
-  activeConnections Int?    // Number of active connections
-  errorCount      Int       @default(0)
-  timestamp       DateTime  @default(now())
-
-  @@index([endpoint, timestamp])
-  @@index([timestamp])
-}
-
 enum ServerStatus {
   ACTIVE
   INACTIVE

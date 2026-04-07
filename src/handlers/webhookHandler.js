@@ -202,27 +202,6 @@ function initializeWebServer(prisma, botClient) {
           return await handleEventWithLogging(handlePingEvent, req, res, payload, prisma, botClient, validatedRepositoryContext, loggingContext);
         default:
           console.log(`Event type ${event} is not currently handled.`);
-          // Log unhandled event to SystemLog for monitoring
-          try {
-            await prisma.systemLog.create({
-              data: {
-                level: 'INFO',
-                category: 'webhook',
-                message: `Unhandled webhook event: ${event}`,
-                details: {
-                  serverId: validatedRepositoryContext.server.id,
-                  repositoryId: validatedRepositoryContext.id,
-                  action: payload.action || null,
-                  processingTime: Date.now() - startTime,
-                  userAgent: req.headers['user-agent'],
-                  sourceIp: req.headers['x-forwarded-for'] || req.connection?.remoteAddress,
-                },
-                ipAddress: req.headers['x-forwarded-for'] || req.connection?.remoteAddress,
-              }
-            });
-          } catch (logError) {
-            console.error('Failed to log unhandled event:', logError);
-          }
           return res.status(200).send(`Event ${event} received, but not currently handled.`);
       }
     } catch (error) {
