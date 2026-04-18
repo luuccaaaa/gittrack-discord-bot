@@ -7,6 +7,7 @@ const { handlePRReviewEvent, handlePRReviewCommentEvent } = require('./pullReque
 const { checkChannelLimit } = require('../functions/limitChecker');
 const { findMatchingBranches } = require('../functions/branchMatcher');
 const { getEventRouting } = require('../functions/eventRouting');
+const { stripHtmlComments } = require('../functions/sanitizeBody');
 
 function initializeWebServer(prisma, botClient) {
   const app = express();
@@ -316,11 +317,13 @@ function initializeWebServer(prisma, botClient) {
         };
 
         if (payload.comment.body) {
-          let commentBody = payload.comment.body;
-          if (commentBody.length > 1000) {
-            commentBody = commentBody.substring(0, 997) + '...';
+          let commentBody = stripHtmlComments(payload.comment.body);
+          if (commentBody) {
+            if (commentBody.length > 1000) {
+              commentBody = commentBody.substring(0, 997) + '...';
+            }
+            embed.description = commentBody;
           }
-          embed.description = commentBody;
         }
 
         const sentMessage = await channel.send({ embeds: [embed] });
@@ -522,7 +525,7 @@ function initializeWebServer(prisma, botClient) {
           footer: { text: `GitHub Pull Request` }
         };
         // ... (rest of embed construction from original)
-        if (pr.body) { let prBody = pr.body; if (prBody.length > 300) { prBody = prBody.substring(0, 297) + '...'; } embed.description = prBody; }
+        if (pr.body) { let prBody = stripHtmlComments(pr.body); if (prBody) { if (prBody.length > 300) { prBody = prBody.substring(0, 297) + '...'; } embed.description = prBody; } }
         if (action === 'closed' && pr.merged) { embed.fields.push({ name: 'Merged by', value: pr.merged_by.login, inline: true }); }
         if (action === 'assigned' && payload.assignee) { embed.description = `${pr.user.login} assigned ${payload.assignee.login}.`; }
         // ... (other action specific descriptions)
@@ -595,7 +598,7 @@ function initializeWebServer(prisma, botClient) {
           footer: { text: `GitHub Issue` }
         };
         // ... (rest of embed construction from original)
-        if (issue.body) { let issueBody = issue.body; if (issueBody.length > 300) { issueBody = issueBody.substring(0, 297) + '...'; } embed.description = issueBody; }
+        if (issue.body) { let issueBody = stripHtmlComments(issue.body); if (issueBody) { if (issueBody.length > 300) { issueBody = issueBody.substring(0, 297) + '...'; } embed.description = issueBody; } }
         if (issue.labels && issue.labels.length > 0) { embed.fields.push({ name: 'Labels', value: issue.labels.map(l => `\`${l.name}\``).join(', '), inline: true }); }
         // ... (other action specific descriptions)
 
@@ -719,7 +722,7 @@ function initializeWebServer(prisma, botClient) {
           timestamp: release.published_at || new Date().toISOString(),
           footer: { text: `GitHub Release` }
         };
-        if (release.body) { let body = release.body; if (body.length > 1500) {body = body.substring(0, 1497) + '...';} embed.description = body; }
+        if (release.body) { let body = stripHtmlComments(release.body); if (body) { if (body.length > 1500) {body = body.substring(0, 1497) + '...';} embed.description = body; } }
         const sentMessage = await channel.send({ embeds: [embed] });
         console.log(`Sent release notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
