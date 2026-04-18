@@ -4,6 +4,7 @@
  */
 
 const { getEventRouting } = require('../functions/eventRouting');
+const { stripHtmlComments } = require('../functions/sanitizeBody');
 
 /**
  * Handles pull request review events
@@ -96,10 +97,12 @@ async function handlePRReviewEvent(req, res, payload, prisma, botClient, repoCon
 
       // Add review comments if available
       if (payload.review.body) {
-        const reviewBody = payload.review.body;
-        embed.description = reviewBody.length > 300
-          ? reviewBody.substring(0, 300) + '...'
-          : reviewBody;
+        const reviewBody = stripHtmlComments(payload.review.body);
+        if (reviewBody) {
+          embed.description = reviewBody.length > 300
+            ? reviewBody.substring(0, 300) + '...'
+            : reviewBody;
+        }
       }
 
       const sentMessage = await channel.send({ embeds: [embed] });
@@ -137,7 +140,7 @@ async function handlePRReviewCommentEvent(req, res, payload, prisma, botClient, 
   const prNumber = payload.pull_request.number;
   const prTitle = payload.pull_request.title;
   const commentUrl = payload.comment.html_url;
-  const commentBody = payload.comment.body || '';
+  const commentBody = stripHtmlComments(payload.comment.body);
   const path = payload.comment.path; // File being commented on
 
   console.log(`PR Review Comment ${action} on PR #${prNumber} in ${repoUrl} by ${username}`);
