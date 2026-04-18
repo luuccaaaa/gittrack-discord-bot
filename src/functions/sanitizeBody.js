@@ -7,7 +7,9 @@
  * text into Discord embeds.
  */
 function stripHtmlComments(text) {
-  if (typeof text !== 'string') return '';
+  if (typeof text !== 'string') {
+    return '';
+  }
   return text.replace(/<!--[\s\S]*?-->/g, '').trim();
 }
 
