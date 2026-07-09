@@ -1,6 +1,7 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, ChannelType } = require('discord.js');
 const { checkRepositoryLimit, checkChannelLimit } = require('../functions/limitChecker');
 const { isValidBranchPattern } = require('../functions/branchMatcher');
+const { getChannelPermissionWarning } = require('../functions/permissionChecker');
 
 // Helper function to extract owner and repo from GitHub URL
 function extractOwnerAndRepo(url) {
@@ -67,7 +68,7 @@ module.exports = {
     .addChannelOption(option =>
       option.setName('channel')
         .setDescription('The channel where notifications for this repository will be sent.')
-        .addChannelTypes(0) // GuildText only
+        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement) // Text and Announcement channels
         .setRequired(true)),
 
   async execute(interaction, prisma) {
@@ -100,6 +101,10 @@ module.exports = {
       await interaction.editReply('The selected channel must be a text-based channel.');
       return;
     }
+
+    // Warn (without blocking) if the bot cannot post in the selected channel
+    const permissionWarning = getChannelPermissionWarning(notificationChannel, interaction.guild);
+    const permissionNote = permissionWarning ? `\n\n${permissionWarning}` : '';
 
     // Validate branch pattern
     if (!isValidBranchPattern(branchName)) {
@@ -225,7 +230,7 @@ module.exports = {
 
         if (existingWildcard) {
           await interaction.editReply(
-            `All branches are already being tracked for repository <${standardizedUrl}> in channel ${notificationChannel}.`
+            `All branches are already being tracked for repository <${standardizedUrl}> in channel ${notificationChannel}.${permissionNote}`
           );
           return;
         }
@@ -241,7 +246,7 @@ module.exports = {
 
         if (deletedBranches.count > 0) {
           await interaction.editReply(
-            `Removed ${deletedBranches.count} specific branch tracking rules and now tracking all branches for repository <${standardizedUrl}> in channel ${notificationChannel}.`
+            `Removed ${deletedBranches.count} specific branch tracking rules and now tracking all branches for repository <${standardizedUrl}> in channel ${notificationChannel}.${permissionNote}`
           );
           return;
         }
@@ -257,7 +262,7 @@ module.exports = {
 
         if (existingBranch) {
           await interaction.editReply(
-            `Branch \`${branchName}\` is already being tracked for repository <${standardizedUrl}> in channel ${notificationChannel}.`
+            `Branch \`${branchName}\` is already being tracked for repository <${standardizedUrl}> in channel ${notificationChannel}.${permissionNote}`
           );
           return;
         }
@@ -287,7 +292,7 @@ module.exports = {
 
       await interaction.editReply(
         `✅ Successfully linked **${branchDescription}** from repository <${standardizedUrl}> to channel ${notificationChannel}.\n\n` +
-        `You will now receive notifications matching this pattern in the specified channel.`
+        `You will now receive notifications matching this pattern in the specified channel.${permissionNote}`
       );
 
     } catch (error) {

@@ -1,4 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
+const { getChannelPermissionWarning } = require('../functions/permissionChecker');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -93,8 +94,11 @@ module.exports = {
         data: { notificationChannelId: channel.id }
       });
 
+      const permissionWarning = getChannelPermissionWarning(channel, interaction.guild);
+      const permissionNote = permissionWarning ? `\n\n${permissionWarning}` : '';
+
       await interaction.editReply(
-        `Default notification channel for repository \`${repository.url}\` has been set to ${channel}. This channel will be used for all repository-wide GitHub notifications.`
+        `Default notification channel for repository \`${repository.url}\` has been set to ${channel}. This channel will be used for all repository-wide GitHub notifications.${permissionNote}`
       );
     } catch (error) {
       console.error('Error setting repository default channel:', error);

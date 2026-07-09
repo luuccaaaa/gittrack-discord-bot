@@ -1,5 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ChannelType } = require('discord.js');
 const { checkRepositoryLimit } = require('../functions/limitChecker');
+const { getChannelPermissionWarning } = require('../functions/permissionChecker');
 const crypto = require('crypto');
 
 // Helper function to generate a random webhook secret
@@ -18,7 +19,7 @@ module.exports = {
     .addChannelOption(option =>
       option.setName('channel')
         .setDescription('The default channel for repository notifications (optional - defaults to current channel)')
-        .addChannelTypes(0) // GuildText only
+        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement) // Text and Announcement channels
         .setRequired(false)),
   
   async execute(interaction, prisma) {
@@ -31,6 +32,9 @@ module.exports = {
     
     // Use the channel where the command was called from if no channel is specified
     const notificationChannel = setupChannel || interaction.channel;
+
+    // Warn (without blocking) if the bot cannot post in the notification channel
+    const permissionWarning = getChannelPermissionWarning(notificationChannel, interaction.guild);
 
     // Basic URL validation
     try {
@@ -217,8 +221,9 @@ module.exports = {
         })
         .setTimestamp();
 
-      await interaction.editReply({ 
-        embeds: [embed] 
+      await interaction.editReply({
+        content: permissionWarning || undefined,
+        embeds: [embed]
       });
 
     } catch (error) {
