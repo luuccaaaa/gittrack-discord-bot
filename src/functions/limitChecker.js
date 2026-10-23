@@ -34,11 +34,13 @@ function getMaxChannelsAllowed() {
  */
 async function checkRepositoryLimit(prisma, serverId) {
   try {
-    const currentRepoCount = await prisma.repository.count({
-      where: { serverId }
-    });
+    const [currentRepoCount, server] = await Promise.all([
+      prisma.repository.count({ where: { serverId } }),
+      prisma.server.findUnique({ where: { id: serverId }, select: { maxRepos: true } })
+    ]);
 
-    const maxAllowed = getMaxReposAllowed();
+    // Per-server override takes precedence over the global env limit
+    const maxAllowed = server?.maxRepos ?? getMaxReposAllowed();
     
     return {
       isAtLimit: currentRepoCount >= maxAllowed,

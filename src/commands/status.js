@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { checkRepositoryLimit, checkChannelLimit, getMaxReposAllowed, getMaxChannelsAllowed } = require('../functions/limitChecker');
+const { checkRepositoryLimit, checkChannelLimit, getMaxChannelsAllowed } = require('../functions/limitChecker');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -34,11 +34,11 @@ module.exports = {
         .setTimestamp();
 
       const repoCount = server.repositories.length;
-      const maxReposAllowed = getMaxReposAllowed();
       const maxChannelsAllowed = getMaxChannelsAllowed();
 
       // Get repository and channel limits
       const repoLimit = await checkRepositoryLimit(prisma, server.id);
+      const maxReposAllowed = repoLimit.maxAllowed;
       const channelLimit = await checkChannelLimit(prisma, server.id);
 
       // Create a map of all channels used for branch notifications

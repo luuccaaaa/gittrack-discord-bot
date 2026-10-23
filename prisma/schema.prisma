@@ -23,6 +23,7 @@ model Server {
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
   messagesSent            Int              @default(0) // Added field for message count
+  maxRepos                Int?             // Per-server repository limit override (null = MAX_REPOS_ALLOWED)
 }
 
 model Repository {
