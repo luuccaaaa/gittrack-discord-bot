@@ -158,3 +158,24 @@ test('commands reject a repository from another server', async () => {
   assert.match(reply.at(-1), /not found/i);
   assert.equal(prisma.rows.length, 0);
 });
+
+// Remaining handlers that send through the same helper (review, comments, CI events).
+const EXTRA = {
+  pull_request_review: { type: 'pull_request', payload: { action: 'submitted', review: { state: 'approved', html_url: 'http://rv', body: 'ok' }, pull_request: { number: 1, title: 't', html_url: 'http://p' } } },
+  issue_comment: { type: 'issues', actions: { comments: true }, payload: { action: 'created', issue: { number: 1, title: 't', html_url: 'http://i' }, comment: { html_url: 'http://c', body: 'hi' } } },
+  workflow_job: { type: 'workflow_job', payload: { action: 'completed', workflow_job: { name: 'build', conclusion: 'success', status: 'completed', html_url: 'http://w', head_branch: 'main' } } },
+  check_suite: { type: 'check_suite', payload: { action: 'completed', check_suite: { conclusion: 'success', head_branch: 'main', head_sha: 'abcdef1234', url: 'http://cs' } } },
+};
+
+test('review, comment and CI events also carry the role ping', async () => {
+  for (const [event, { type, actions, payload }] of Object.entries(EXTRA)) {
+    const prisma = makePrisma();
+    const bot = makeBot();
+    prisma.rows.push({ id: 'seed', repositoryId: 'r1', eventType: type, channelId: 'default', config: { explicitChannel: false, actionsEnabled: actions || {}, pingRoleId: '55' } });
+    await withServer(prisma, bot, async (url) => {
+      assert.equal(await post(url, event, payload), 200, `${event} status`);
+      assert.equal(bot.sent.length, 1, `${event} sent`);
+      assert.equal(bot.sent[0].content, '<@&55>', `${event} ping`);
+    });
+  }
+});

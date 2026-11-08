@@ -125,6 +125,8 @@ printf 'https://discord.com/oauth2/authorize?client_id=%s&permissions=2770254100
 | `/release-unlimited` | No length limit on release notes |
 | `/remove-event-channel` | Remove non-branch event route |
 | `/edit-event` | Configure per-event action filters |
+
+Role pings (`/set-ping-role`) need the role to be mentionable, or the bot to have the **Mention Everyone** permission.
 | `/status` | Show server configuration and limits |
 | `/reset` | Reset server data (admin only) |
 | `/ping` | Health command |
