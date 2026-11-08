@@ -34,7 +34,7 @@ async function handlePRReviewEvent(req, res, payload, prisma, botClient, repoCon
   // This logic needs to be re-evaluated if getPullRequestRouting is removed.
   // For now, assuming we proceed without config checks here.
 
-  const { channelId, config } = await getEventRouting(prisma, repoContext, 'pull_request', repoContext.notificationChannelId);
+  const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'pull_request', repoContext.notificationChannelId);
 
   // If this is a comment-only review notification and comments are not explicitly enabled, skip
   if (reviewState === 'commented') {
