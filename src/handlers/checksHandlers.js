@@ -1,3 +1,4 @@
+const { sendNotification } = require('../functions/sendNotification');
 const { findMatchingBranches } = require('../functions/branchMatcher');
 const { getEventRouting } = require('../functions/eventRouting');
 
@@ -75,7 +76,7 @@ async function handleWorkflowJobEvent(req, res, payload, prisma, botClient, repo
         embed.fields.push({ name: 'Duration', value: minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`, inline: true });
       }
 
-      const sentMessage = await channel.send({ embeds: [embed] });
+      const sentMessage = await sendNotification(channel, embed, config);
 
       // Increment messagesSent counter
       try {
@@ -167,7 +168,7 @@ async function handleCheckRunEvent(req, res, payload, prisma, botClient, repoCon
                 footer: { text: 'GitHub Check Run' }
               };
 
-              const sentMessage = await channel.send({ embeds: [embed] });
+              const sentMessage = await sendNotification(channel, embed, config);
               lastMessageInfo = { channelId, messageId: sentMessage.id };
 
               try {
@@ -237,7 +238,7 @@ async function handleCheckRunEvent(req, res, payload, prisma, botClient, repoCon
         timestamp: checkRun.completed_at || checkRun.started_at || new Date().toISOString(),
         footer: { text: 'GitHub Check Run' }
       };
-      const sentMessage = await channel.send({ embeds: [embed] });
+      const sentMessage = await sendNotification(channel, embed, config);
 
       try {
         await prisma.server.update({ where: { id: serverConfig.id }, data: { messagesSent: { increment: 1 } } });
@@ -325,7 +326,7 @@ async function handleCheckSuiteEvent(req, res, payload, prisma, botClient, repoC
         embed.fields.push({ name: 'Conclusion', value: checkSuite.conclusion, inline: true });
       }
 
-      const sentMessage = await channel.send({ embeds: [embed] });
+      const sentMessage = await sendNotification(channel, embed, config);
 
       try {
         await prisma.server.update({ where: { id: serverConfig.id }, data: { messagesSent: { increment: 1 } } });

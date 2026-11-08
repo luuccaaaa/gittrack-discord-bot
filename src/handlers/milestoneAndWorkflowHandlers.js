@@ -1,3 +1,4 @@
+const { sendNotification } = require('../functions/sendNotification');
 const { findMatchingBranches } = require('../functions/branchMatcher');
 const { getEventRouting } = require('../functions/eventRouting');
 
@@ -84,7 +85,7 @@ async function handleMilestoneEvent(req, res, payload, prisma, botClient, repoCo
           });
         }
 
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const sentMessage = await sendNotification(channel, embed, config);
         console.log(`Sent milestone notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
@@ -243,7 +244,7 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
           }
 
 
-          const sentMessage = await channel.send({ embeds: [embed] });
+          const sentMessage = await sendNotification(channel, embed, config);
           console.log(`Sent workflow notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
           // Store the last message info for return

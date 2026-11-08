@@ -1,3 +1,4 @@
+const { sendNotification } = require('../functions/sendNotification');
 /**
  * Handles GitHub pull request review events
  * This file contains handlers for pull request review and review comment events
@@ -105,7 +106,7 @@ async function handlePRReviewEvent(req, res, payload, prisma, botClient, repoCon
         }
       }
 
-      const sentMessage = await channel.send({ embeds: [embed] });
+      const sentMessage = await sendNotification(channel, embed, config);
       console.log(`Sent PR review notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
       // Increment messagesSent counter
@@ -225,7 +226,7 @@ async function handlePRReviewCommentEvent(req, res, payload, prisma, botClient, 
         });
       }
 
-      const sentMessage = await channel.send({ embeds: [embed] });
+      const sentMessage = await sendNotification(channel, embed, config);
       console.log(`Sent PR review comment notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
       // Increment messagesSent counter

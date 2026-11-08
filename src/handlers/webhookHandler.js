@@ -1,3 +1,4 @@
+const { sendNotification } = require('../functions/sendNotification');
 const express = require('express');
 const crypto = require('crypto');
 const querystring = require('querystring');
@@ -326,7 +327,7 @@ function initializeWebServer(prisma, botClient) {
           }
         }
 
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const sentMessage = await sendNotification(channel, embed, config);
         // Comment notification sent successfully
 
         // Increment messagesSent counter
@@ -530,7 +531,7 @@ function initializeWebServer(prisma, botClient) {
         if (action === 'assigned' && payload.assignee) { embed.description = `${pr.user.login} assigned ${payload.assignee.login}.`; }
         // ... (other action specific descriptions)
 
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const sentMessage = await sendNotification(channel, embed, config);
         // Increment messagesSent counter
         try {
           await prisma.server.update({
@@ -602,7 +603,7 @@ function initializeWebServer(prisma, botClient) {
         if (issue.labels && issue.labels.length > 0) { embed.fields.push({ name: 'Labels', value: issue.labels.map(l => `\`${l.name}\``).join(', '), inline: true }); }
         // ... (other action specific descriptions)
 
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const sentMessage = await sendNotification(channel, embed, config);
         // Increment messagesSent counter
         try {
           await prisma.server.update({
@@ -662,7 +663,7 @@ function initializeWebServer(prisma, botClient) {
           timestamp: new Date().toISOString(),
           footer: { text: `GitHub Star Event` }
         };
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const sentMessage = await sendNotification(channel, embed, config);
         console.log(`Sent star notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
@@ -722,8 +723,8 @@ function initializeWebServer(prisma, botClient) {
           timestamp: release.published_at || new Date().toISOString(),
           footer: { text: `GitHub Release` }
         };
-        if (release.body) { let body = stripHtmlComments(release.body); if (body) { if (body.length > 1500) {body = body.substring(0, 1497) + '...';} embed.description = body; } }
-        const sentMessage = await channel.send({ embeds: [embed] });
+        if (release.body) { let body = stripHtmlComments(release.body); if (body) { if (!config.noLimit && body.length > 1500) {body = body.substring(0, 1497) + '...';} embed.description = body; } }
+        const sentMessage = await sendNotification(channel, embed, config);
         console.log(`Sent release notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
@@ -779,7 +780,7 @@ function initializeWebServer(prisma, botClient) {
           timestamp: forkeeRepo.created_at || new Date().toISOString(),
           footer: { text: 'GitHub Fork Event' }
         };
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const sentMessage = await sendNotification(channel, embed, config);
         console.log(`Sent fork notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
@@ -847,7 +848,7 @@ function initializeWebServer(prisma, botClient) {
         if (refType === 'branch') {
           embed.description = `To track this branch specifically, use:\n\`/link ${repoUrl} ${refName} #channel\``;
         }
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const sentMessage = await sendNotification(channel, embed, config);
         console.log(`Sent create notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
@@ -907,7 +908,7 @@ function initializeWebServer(prisma, botClient) {
           timestamp: new Date().toISOString(),
           footer: { text: `GitHub ${refType.charAt(0).toUpperCase() + refType.slice(1)} Deletion` }
         };
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const sentMessage = await sendNotification(channel, embed, config);
         console.log(`Sent delete notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter

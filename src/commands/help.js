@@ -32,6 +32,8 @@ module.exports = {
             '• `/remove-repo` - Remove a repository from tracking\n' +
             '• `/set-default-channel` - Set the default notification channel\n' +
             '• `/set-event-channel` - Route a specific event (e.g., issues, release) to a channel\n' +
+            '• `/set-ping-role` - Ping a role for a type of notification\n' +
+            '• `/release-unlimited` - Remove the release notes length limit\n' +
             '• `/edit-event` - Configure filters for a routed event (e.g., only issues opened, no comments)\n' +
             '• `/remove-event-channel` - Remove a specific event route from a repository\n' +
             '• `/reset` - Reset all bot data for this server (Admin only)',

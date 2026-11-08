@@ -211,7 +211,7 @@ module.exports = {
         if (mapping) {
           await prisma.repositoryEventChannel.update({
             where: { id: mapping.id },
-            data: { config: { actionsEnabled } }
+            data: { config: { ...(mapping.config || {}), actionsEnabled } }
           });
         } else {
           await prisma.repositoryEventChannel.create({
