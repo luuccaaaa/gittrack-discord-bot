@@ -74,9 +74,9 @@ const PAYLOADS = {
   issues: { action: 'opened', issue: { number: 1, title: 't', html_url: 'http://i', state: 'open', user: user(), body: 'b', labels: [] } },
   pull_request: { action: 'opened', pull_request: { number: 1, title: 't', html_url: 'http://p', state: 'open', user: user(), body: 'b', merged: false, draft: false, head: { ref: 'a' }, base: { ref: 'main' } } },
   star: { action: 'created', repository: { html_url: REPO.url, full_name: 'o/r', stargazers_count: 3 } },
-  fork: { action: 'created', forkee: { full_name: 'x/r', html_url: 'http://f', owner: user() } },
-  create: { ref_type: 'tag', ref: 'v1', action: 'created' },
-  delete: { ref_type: 'tag', ref: 'v1', action: 'deleted' },
+  fork: { forkee: { full_name: 'x/r', html_url: 'http://f', owner: user() } },
+  create: { ref_type: 'tag', ref: 'v1' }, // real create/delete/fork payloads have no `action`
+  delete: { ref_type: 'tag', ref: 'v1' },
   milestone: { action: 'created', milestone: { title: 'm', html_url: 'http://m', description: 'd', creator: user(), open_issues: 0, closed_issues: 0, due_on: null } },
 };
 const release = (body) => ({

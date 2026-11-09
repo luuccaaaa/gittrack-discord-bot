@@ -751,8 +751,10 @@ function initializeWebServer(prisma, botClient) {
     // Prefer event-specific channel for forks
     const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'fork', repoContext.notificationChannelId);
 
-    if (!config || !config.actionsEnabled || !config.actionsEnabled[payload.action]) {
-      return { statusCode: 200, message: `Fork action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
+    // GitHub's fork payload has no \`action\` field; the filter key is 'created'.
+    const forkAction = payload.action || 'created';
+    if (!config || !config.actionsEnabled || !config.actionsEnabled[forkAction]) {
+      return { statusCode: 200, message: `Fork action '${forkAction}' disabled by config.`, channelId: null, messageId: null };
     }
 
     if (channelId === 'pending') {return { statusCode: 200, message: 'Fork event ack, channel pending.', channelId: null, messageId: null };}
@@ -808,8 +810,10 @@ function initializeWebServer(prisma, botClient) {
     // Prefer event-specific channel for create events
     const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'create', repoContext.notificationChannelId);
 
-    if (!config || !config.actionsEnabled || !config.actionsEnabled[payload.action]) {
-      return { statusCode: 200, message: `Create action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
+    // GitHub's create payload has no \`action\` field; the filter key is 'created'.
+    const createAction = payload.action || 'created';
+    if (!config || !config.actionsEnabled || !config.actionsEnabled[createAction]) {
+      return { statusCode: 200, message: `Create action '${createAction}' disabled by config.`, channelId: null, messageId: null };
     }
 
     if (channelId === 'pending') {return { statusCode: 200, message: 'Create event ack, channel pending.', channelId: null, messageId: null };}
@@ -876,8 +880,10 @@ function initializeWebServer(prisma, botClient) {
     // Prefer event-specific channel for delete events
     const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'delete', repoContext.notificationChannelId);
 
-    if (!config || !config.actionsEnabled || !config.actionsEnabled[payload.action]) {
-      return { statusCode: 200, message: `Delete action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
+    // GitHub's delete payload has no \`action\` field; the filter key is 'deleted'.
+    const deleteAction = payload.action || 'deleted';
+    if (!config || !config.actionsEnabled || !config.actionsEnabled[deleteAction]) {
+      return { statusCode: 200, message: `Delete action '${deleteAction}' disabled by config.`, channelId: null, messageId: null };
     }
 
     if (channelId === 'pending') {return { statusCode: 200, message: 'Delete event ack, channel pending.', channelId: null, messageId: null };}
