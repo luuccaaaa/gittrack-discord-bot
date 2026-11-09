@@ -15,6 +15,7 @@ const REPO = {
 // In-memory prisma: the event-channel table is real; everything else is a harmless stub.
 function makePrisma() {
   const rows = [];
+  const increments = []; // messagesSent increments
   let n = 0;
   const match = (w) => (r) => Object.entries(w).every(([k, v]) => r[k] === v);
   return {
@@ -29,7 +30,8 @@ function makePrisma() {
       create: async ({ data }) => { const r = { id: `e${++n}`, ...data }; rows.push(r); return r; },
       update: async ({ where, data }) => Object.assign(rows.find(r => r.id === where.id), data),
     },
-    server: { update: async () => ({}), findUnique: async () => ({ maxRepos: null }), findMany: async () => [] },
+    increments,
+    server: { update: async ({ data }) => { if (data.messagesSent) { increments.push(data.messagesSent.increment); } return {}; }, findUnique: async () => ({ maxRepos: null }), findMany: async () => [] },
     trackedBranch: { findMany: async () => [] },
     errorLog: { create: async () => ({}) },
   };
@@ -301,4 +303,89 @@ test('/status lists ping roles and full release notes, and hides default-channel
   await status.execute({ guildId: 'g1', guild: { name: 'G' }, deferReply: async () => {}, editReply: async (m) => { replies.push(m); } }, prisma);
   assert.ok(replies[0].embeds, 'still renders');
   assert.ok(replies[0].embeds[0].toJSON().fields.every(f => f.value.length <= 1024), 'field within Discord limit');
+});
+
+// --- Review fixes: stale/concurrent config writes, message counts ---
+
+test('concurrent config writes all survive (no lost updates)', async () => {
+  const prisma = makePrisma();
+  await Promise.all([
+    patchEventConfig(prisma, 'g1', 'r1', 'issues', { pingRoleIds: ['1'] }),
+    patchEventConfig(prisma, 'g1', 'r1', 'issues', { actionsEnabled: { opened: false } }),
+    patchEventConfig(prisma, 'g1', 'r1', 'issues', { actionsEnabled: { closed: false } }),
+    patchEventConfig(prisma, 'g1', 'r1', 'issues', { noLimit: true }),
+  ]);
+  assert.equal(prisma.rows.length, 1, 'one mapping, not duplicates');
+  assert.deepEqual(cfg(prisma, 'issues'), {
+    explicitChannel: false, pingRoleIds: ['1'], actionsEnabled: { opened: false, closed: false }, noLimit: true,
+  });
+});
+
+test('channel commands keep ping roles and filters (patch with channelId)', async () => {
+  const prisma = makePrisma();
+  await patchEventConfig(prisma, 'g1', 'r1', 'issues', { pingRoleIds: ['1'], actionsEnabled: { opened: false } });
+  await patchEventConfig(prisma, 'g1', 'r1', 'issues', { explicitChannel: true }, { channelId: 'c9' });
+  const row = prisma.rows.find(r => r.eventType === 'issues');
+  assert.equal(row.channelId, 'c9');
+  assert.deepEqual(row.config, { explicitChannel: true, pingRoleIds: ['1'], actionsEnabled: { opened: false } });
+  await patchEventConfig(prisma, 'g1', 'r1', 'issues', { explicitChannel: false }, { channelId: 'default' });
+  assert.deepEqual(row.config.pingRoleIds, ['1'], 'removing the route keeps the roles');
+});
+
+test('a stale editor cannot restore a removed role or undo other changes', async () => {
+  const prisma = makePrisma();
+  await patchEventConfig(prisma, 'g1', 'r1', 'release', { pingRoleIds: ['9'] });
+  const stale = await openEditor(prisma, 'release'); // opened while role 9 is set
+
+  // Elsewhere (another editor or command): remove the role and turn off 'published'
+  await patchEventConfig(prisma, 'g1', 'r1', 'release', { pingRoleIds: [], actionsEnabled: { published: false } });
+
+  const res = await stale.click('edit_evt_opt:r1:release:noLimit');
+  assert.deepEqual(cfg(prisma, 'release'), { explicitChannel: false, pingRoleIds: [], actionsEnabled: { published: false }, noLimit: true });
+  // The editor refreshed to the saved state
+  const fields = res.update[0].embeds[0].toJSON().fields;
+  assert.equal(fields.find(f => f.name === 'Ping roles').value, 'None');
+  assert.equal(res.update[0].components[0].toJSON().components[0].style, 2, "'published' now shown as off");
+});
+
+test('two editors open at once: each click changes only its own action', async () => {
+  const prisma = makePrisma();
+  const a = await openEditor(prisma, 'issues');
+  const b = await openEditor(prisma, 'issues');
+  await a.click('edit_evt:r1:issues:opened');
+  await b.click('edit_evt:r1:issues:closed');
+  await b.click('edit_evt_role:r1:issues', b.pick(['5', true]));
+  await a.click('edit_evt:r1:issues:labeled');
+  const c = cfg(prisma, 'issues');
+  assert.deepEqual(c.actionsEnabled, { opened: false, closed: false, labeled: false });
+  assert.deepEqual(c.pingRoleIds, ['5'], "editor A's later click kept B's role");
+});
+
+test('a stale toggle follows what the user saw, not a blind flip', async () => {
+  const prisma = makePrisma();
+  const a = await openEditor(prisma, 'release'); // shows published: on
+  const b = await openEditor(prisma, 'release');
+  await b.click('edit_evt:r1:release:published'); // B turns it off
+  await a.click('edit_evt:r1:release:published'); // A (still showing on) also means "off"
+  assert.equal(cfg(prisma, 'release').actionsEnabled.published, false);
+});
+
+test('opening the editor saves nothing and shows the routing defaults', async () => {
+  const prisma = makePrisma();
+  const { replies } = await openEditor(prisma, 'check_run');
+  assert.equal(prisma.rows.length, 0, 'no write on open');
+  const styles = Object.fromEntries(replies[0].components[0].toJSON().components.map(c => [c.label, c.style]));
+  assert.deepEqual(styles, { created: 2, requested: 2, rerequested: 2, completed: 3 }, 'only completed on (3 = green, 2 = grey)');
+});
+
+test('messagesSent counts every message of a split release', async () => {
+  const prisma = makePrisma();
+  const bot = makeBot();
+  await setNoLimit(prisma, true);
+  const long = Array.from({ length: 900 }, (_, i) => `- change number ${i}`).join('\n');
+  await withServer(prisma, bot, async (url) => {
+    await post(url, 'release', release(long));
+  });
+  assert.ok(bot.sent.length > 1);
+  assert.deepEqual(prisma.increments, [bot.sent.length]);
 });

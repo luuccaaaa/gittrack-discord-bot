@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, RoleSelectMenuBuilder, PermissionFlagsBits } = require('discord.js');
 const { patchEventConfig } = require('../functions/eventConfig');
+const { getDefaultActionsForEvent } = require('../functions/eventRouting');
 
 // Supported routable non-branch events and their common actions
 const ROUTABLE_EVENTS = [
@@ -123,36 +124,23 @@ module.exports = {
         return;
       }
 
-      let mapping = await prisma.repositoryEventChannel.findFirst({
+      // Opening the editor saves nothing; the first change creates the mapping.
+      const mapping = await prisma.repositoryEventChannel.findFirst({
         where: { repositoryId: repository.id, eventType }
       });
 
-      // If mapping doesn't exist yet, create one upfront with defaults so the first interaction works
-      if (!mapping) {
-        const supportedActions = EVENT_ACTION_PRESETS[eventType] || [];
-        const defaultActions = supportedActions.reduce((acc, action) => {
-          acc[action] = action === 'comments' ? false : true;
-          return acc;
-        }, {});
-        mapping = await prisma.repositoryEventChannel.create({
-          data: {
-            repositoryId: repository.id,
-            eventType,
-            channelId: 'default',
-            config: { actionsEnabled: defaultActions, explicitChannel: false }
-          }
-        });
-      }
-
       const displayUrl = formatRepoUrlForDisplay(repository.url);
       const supportedActions = EVENT_ACTION_PRESETS[eventType] || [];
-      // Local copy of the stored config; every change is saved with patchEventConfig so other keys are kept.
-      const config = { ...((mapping && mapping.config) || {}) };
-      const actionsEnabled = config.actionsEnabled || supportedActions.reduce((acc, action) => {
-        acc[action] = action === 'comments' ? false : true;
-        return acc;
-      }, {});
-      config.actionsEnabled = actionsEnabled;
+      // Copy of the saved config for rendering, replaced by the saved result after every change.
+      // A click saves only the key it changes (to the opposite of what this editor shows), merged
+      // into the latest saved config, so a stale editor (or a second one open at the same time)
+      // can't undo other changes.
+      let config = { ...((mapping && mapping.config) || {}) };
+      const defaultActions = getDefaultActionsForEvent(eventType);
+      // Effective value, as webhook routing sees it: the saved value, else the event's default.
+      const isEnabled = (cfg, action) => Boolean(
+        (cfg.actionsEnabled && action in cfg.actionsEnabled) ? cfg.actionsEnabled[action] : defaultActions[action]
+      );
       const pingRoleIds = () => (Array.isArray(config.pingRoleIds) ? config.pingRoleIds : []);
       const channelDisplay = (mapping && mapping.channelId && mapping.channelId !== 'default')
         ? `<#${mapping.channelId}>`
@@ -187,7 +175,7 @@ module.exports = {
         let row = new ActionRowBuilder();
         let count = 0;
         for (const action of supportedActions) {
-          const enabled = Boolean(actionsEnabled[action]);
+          const enabled = isEnabled(config, action);
           const btn = new ButtonBuilder()
             .setCustomId(`edit_evt:${repository.id}:${eventType}:${action}`)
             .setLabel(`${action}`)
@@ -225,8 +213,9 @@ module.exports = {
       };
 
       const save = async (patch) => {
-        Object.assign(config, patch);
-        await patchEventConfig(prisma, guildId, repository.id, eventType, patch);
+        const saved = await patchEventConfig(prisma, guildId, repository.id, eventType, patch);
+        if (!saved) { throw new Error('Repository no longer exists on this server.'); }
+        config = saved;
       };
 
       const message = await interaction.editReply({ embeds: [buildEmbed()], components: buildRows() });
@@ -279,11 +268,15 @@ module.exports = {
             return;
           }
 
-          actionsEnabled[action] = !actionsEnabled[action];
-          await save({ actionsEnabled });
+          if (!supportedActions.includes(action)) {
+            await i.deferUpdate();
+            return;
+          }
+          // Save only this action
+          await save({ actionsEnabled: { [action]: !isEnabled(config, action) } });
 
-          // Re-render buttons
-          await i.update({ components: buildRows() });
+          // Re-render (other settings may have changed elsewhere)
+          await i.update({ embeds: [buildEmbed()], components: buildRows() });
         } catch (error) {
           console.error('Error updating /edit-event settings:', error);
           const content = `Failed to save: \`${error.message}\``;

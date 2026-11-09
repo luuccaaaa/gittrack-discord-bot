@@ -327,14 +327,14 @@ function initializeWebServer(prisma, botClient) {
           }
         }
 
-        const sentMessage = await sendNotification(channel, embed, config);
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         // Comment notification sent successfully
 
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           // Messages sent counter incremented
         } catch (dbError) {
@@ -531,12 +531,12 @@ function initializeWebServer(prisma, botClient) {
         if (action === 'assigned' && payload.assignee) { embed.description = `${pr.user.login} assigned ${payload.assignee.login}.`; }
         // ... (other action specific descriptions)
 
-        const sentMessage = await sendNotification(channel, embed, config);
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after PR event`);
         } catch (dbError) {
@@ -603,12 +603,12 @@ function initializeWebServer(prisma, botClient) {
         if (issue.labels && issue.labels.length > 0) { embed.fields.push({ name: 'Labels', value: issue.labels.map(l => `\`${l.name}\``).join(', '), inline: true }); }
         // ... (other action specific descriptions)
 
-        const sentMessage = await sendNotification(channel, embed, config);
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after issue event`);
         } catch (dbError) {
@@ -663,14 +663,14 @@ function initializeWebServer(prisma, botClient) {
           timestamp: new Date().toISOString(),
           footer: { text: `GitHub Star Event` }
         };
-        const sentMessage = await sendNotification(channel, embed, config);
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         console.log(`Sent star notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after star event`);
         } catch (dbError) {
@@ -724,14 +724,14 @@ function initializeWebServer(prisma, botClient) {
           footer: { text: `GitHub Release` }
         };
         if (release.body) { let body = stripHtmlComments(release.body); if (body) { if (!config.noLimit && body.length > 1500) {body = body.substring(0, 1497) + '...';} embed.description = body; } }
-        const sentMessage = await sendNotification(channel, embed, config);
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         console.log(`Sent release notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after release event`);
         } catch (dbError) {
@@ -782,14 +782,14 @@ function initializeWebServer(prisma, botClient) {
           timestamp: forkeeRepo.created_at || new Date().toISOString(),
           footer: { text: 'GitHub Fork Event' }
         };
-        const sentMessage = await sendNotification(channel, embed, config);
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         console.log(`Sent fork notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after fork event`);
         } catch (dbError) {
@@ -852,14 +852,14 @@ function initializeWebServer(prisma, botClient) {
         if (refType === 'branch') {
           embed.description = `To track this branch specifically, use:\n\`/link ${repoUrl} ${refName} #channel\``;
         }
-        const sentMessage = await sendNotification(channel, embed, config);
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         console.log(`Sent create notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after create event`);
         } catch (dbError) {
@@ -914,14 +914,14 @@ function initializeWebServer(prisma, botClient) {
           timestamp: new Date().toISOString(),
           footer: { text: `GitHub ${refType.charAt(0).toUpperCase() + refType.slice(1)} Deletion` }
         };
-        const sentMessage = await sendNotification(channel, embed, config);
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         console.log(`Sent delete notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after delete event`);
         } catch (dbError) {

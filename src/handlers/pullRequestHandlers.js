@@ -106,14 +106,14 @@ async function handlePRReviewEvent(req, res, payload, prisma, botClient, repoCon
         }
       }
 
-      const sentMessage = await sendNotification(channel, embed, config);
+      const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
       console.log(`Sent PR review notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
       // Increment messagesSent counter
       try {
         await prisma.server.update({
           where: { id: serverConfig.id },
-          data: { messagesSent: { increment: 1 } },
+          data: { messagesSent: { increment: sentCount } },
         });
         console.log(`Incremented messagesSent for server ${serverConfig.id} after PR review event`);
       } catch (dbError) {
@@ -226,14 +226,14 @@ async function handlePRReviewCommentEvent(req, res, payload, prisma, botClient, 
         });
       }
 
-      const sentMessage = await sendNotification(channel, embed, config);
+      const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
       console.log(`Sent PR review comment notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
       // Increment messagesSent counter
       try {
         await prisma.server.update({
           where: { id: serverConfig.id },
-          data: { messagesSent: { increment: 1 } },
+          data: { messagesSent: { increment: sentCount } },
         });
         console.log(`Incremented messagesSent for server ${serverConfig.id} after PR review comment event`);
       } catch (dbError) {

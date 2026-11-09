@@ -85,14 +85,14 @@ async function handleMilestoneEvent(req, res, payload, prisma, botClient, repoCo
           });
         }
 
-        const sentMessage = await sendNotification(channel, embed, config);
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         console.log(`Sent milestone notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after milestone event`);
         } catch (dbError) {
@@ -245,7 +245,7 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
           }
 
 
-          const sentMessage = await sendNotification(channel, embed, pinged ? null : config);
+          const { message: sentMessage, sentCount } = await sendNotification(channel, embed, pinged ? null : config);
           pinged = true;
           console.log(`Sent workflow notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
@@ -256,7 +256,7 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
           try {
             await prisma.server.update({
               where: { id: serverConfig.id },
-              data: { messagesSent: { increment: 1 } },
+              data: { messagesSent: { increment: sentCount } },
             });
             console.log(`Incremented messagesSent for server ${serverConfig.id} after workflow event`);
           } catch (dbError) {
