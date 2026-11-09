@@ -119,6 +119,7 @@ async function handleCheckRunEvent(req, res, payload, prisma, botClient, repoCon
 
       if (matchingBranches.length > 0) {
         let lastMessageInfo = { channelId: null, messageId: null };
+        let pinged = false; // ping roles once per event, not once per matching branch
         for (const trackedBranch of matchingBranches) {
           // Use tracked branch channel if set, otherwise use the routed channel for this event type
           const channelId = trackedBranch.channelId || routedChannelId || 'pending';
@@ -168,7 +169,8 @@ async function handleCheckRunEvent(req, res, payload, prisma, botClient, repoCon
                 footer: { text: 'GitHub Check Run' }
               };
 
-              const sentMessage = await sendNotification(channel, embed, config);
+              const sentMessage = await sendNotification(channel, embed, pinged ? null : config);
+              pinged = true;
               lastMessageInfo = { channelId, messageId: sentMessage.id };
 
               try {

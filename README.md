@@ -121,16 +121,14 @@ printf 'https://discord.com/oauth2/authorize?client_id=%s&permissions=2770254100
 | `/remove-repo` | Remove repository from tracking |
 | `/set-default-channel` | Set repository default channel |
 | `/set-event-channel` | Route non-branch event to channel |
-| `/set-ping-role` | Ping a role for a notification type |
-| `/release-unlimited` | No length limit on release notes |
 | `/remove-event-channel` | Remove non-branch event route |
-| `/edit-event` | Configure per-event action filters |
+| `/edit-event` | Per-event action filters, role ping, full release notes |
 | `/status` | Show server configuration and limits |
 | `/reset` | Reset server data (admin only) |
 | `/ping` | Health command |
 | `/help` | Command help |
 
-Role pings (`/set-ping-role`) need the role to be mentionable, or the bot to have the **Mention Everyone** permission.
+Role pings (set in `/edit-event`) need the role to be mentionable, or the bot to have the **Mention Everyone** permission.
 
 
 ## Contributing

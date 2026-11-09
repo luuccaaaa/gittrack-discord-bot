@@ -152,6 +152,7 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
     }
 
     let lastMessageInfo = { channelId: null, messageId: null };
+    let pinged = false; // ping roles once per event, not once per matching branch
 
     // For each matching tracked branch, send a notification
     for (const trackedBranch of matchingBranches) {
@@ -244,7 +245,8 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
           }
 
 
-          const sentMessage = await sendNotification(channel, embed, config);
+          const sentMessage = await sendNotification(channel, embed, pinged ? null : config);
+          pinged = true;
           console.log(`Sent workflow notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
           // Store the last message info for return

@@ -15,13 +15,17 @@ function splitText(text) {
 }
 
 /**
- * Send an embed, adding the event's configured role ping (config.pingRoleId)
+ * Send an embed, adding the event's configured role pings (config.pingRoleIds; pass no config to skip the ping)
  * and continuing over extra messages if the description exceeds Discord's limit.
  * Returns the first message sent.
  */
 async function sendNotification(channel, embed, config) {
-  const roleId = config && config.pingRoleId;
-  const opts = roleId ? { content: `<@&${roleId}>`, allowedMentions: { roles: [roleId] } } : {};
+  const guildRoles = channel.guild && channel.guild.roles && channel.guild.roles.cache;
+  const roleIds = ((config && Array.isArray(config.pingRoleIds)) ? config.pingRoleIds : [])
+    .filter(id => !guildRoles || guildRoles.has(id)); // skip roles deleted since they were set
+  const opts = roleIds.length
+    ? { content: roleIds.map(id => `<@&${id}>`).join(' '), allowedMentions: { roles: roleIds } }
+    : {};
   const chunks = embed.description ? splitText(embed.description) : [];
   if (chunks.length <= 1) { return channel.send({ ...opts, embeds: [embed] }); }
 
