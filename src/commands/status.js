@@ -191,9 +191,10 @@ module.exports = {
 
           // Build event routing details (only show explicitly mapped events)
           let eventRoutingDisplay = 'No event-specific routing configured';
-          if (repo.eventChannels && repo.eventChannels.length > 0) {
+          const routedEvents = (repo.eventChannels || []).filter(ec => ec.channelId && ec.channelId !== 'default');
+          if (routedEvents.length > 0) {
             const byChannel = new Map(); // channelId -> [eventType]
-            for (const ec of repo.eventChannels) {
+            for (const ec of routedEvents) {
               if (!byChannel.has(ec.channelId)) {byChannel.set(ec.channelId, []);}
               byChannel.get(ec.channelId).push(ec.eventType);
             }
@@ -205,6 +206,19 @@ module.exports = {
             eventRoutingDisplay = lines.join('\n');
           }
 
+          // Role pings and options set in /edit-event
+          const optionLines = (repo.eventChannels || [])
+            .map(ec => {
+              const cfg = ec.config || {};
+              const parts = [];
+              if (Array.isArray(cfg.pingRoleIds) && cfg.pingRoleIds.length) { parts.push(cfg.pingRoleIds.map(id => `<@&${id}>`).join(' ')); }
+              if (ec.eventType === 'release' && cfg.noLimit) { parts.push('full notes'); }
+              return parts.length ? `\`${ec.eventType}\` → ${parts.join(' · ')}` : null;
+            })
+            .filter(Boolean)
+            .sort();
+          const optionsDisplay = optionLines.length ? `\n**Pings & Options**:\n${optionLines.join('\n')}` : '';
+
           // Check webhook status
           const webhookStatus = repo.webhookSecret 
             ? '✅ Webhook configured' 
@@ -215,9 +229,10 @@ module.exports = {
             ? repo.url.slice(0, -4) 
             : repo.url;
 
+          const value = `**Webhook Status**: ${webhookStatus}\n**Tracked Branches by Channel**:\n${branchDisplay}\n**Event Routing**:\n${eventRoutingDisplay}${optionsDisplay}`;
           embed.addFields({
             name: displayUrl,
-            value: `**Webhook Status**: ${webhookStatus}\n**Tracked Branches by Channel**:\n${branchDisplay}\n**Event Routing**:\n${eventRoutingDisplay}`,
+            value: value.length > 1024 ? `${value.slice(0, 1023)}…` : value, // Discord field limit
             inline: false
           });
         }

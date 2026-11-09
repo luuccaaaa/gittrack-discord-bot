@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { patchEventConfig } = require('../functions/eventConfig');
 
 // Supported non-branch events (should mirror routing-capable events)
 const ROUTABLE_EVENTS = [
@@ -142,10 +143,7 @@ module.exports = {
       }
 
       // Instead of deleting, revert to default sentinel so it follows the repo default channel
-      await prisma.repositoryEventChannel.update({
-        where: { id: existing.id },
-        data: { channelId: 'default', config: { ...(existing.config || {}), explicitChannel: false } }
-      });
+      await patchEventConfig(prisma, interaction.guildId, repository.id, existing.eventType, { explicitChannel: false }, { channelId: 'default' });
 
       const displayUrl = repository.url.endsWith('.git') ? repository.url.slice(0, -4) : repository.url;
       const formattedEvent = eventType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());

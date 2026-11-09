@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ChannelType } = require('discord.js');
+const { patchEventConfig } = require('../functions/eventConfig');
 const { getChannelPermissionWarning } = require('../functions/permissionChecker');
 
 // Event types eligible for per-event routing (non-branch specific)
@@ -123,23 +124,9 @@ module.exports = {
         where: { repositoryId: repository.id, eventType }
       });
 
-      let statusText = 'Created';
-      if (existing) {
-        await prisma.repositoryEventChannel.update({
-          where: { id: existing.id },
-          data: { channelId: channel.id, config: { ...(existing.config || {}), explicitChannel: true } }
-        });
-        statusText = 'Updated';
-      } else {
-        await prisma.repositoryEventChannel.create({
-          data: {
-            repositoryId: repository.id,
-            eventType,
-            channelId: channel.id,
-            config: { explicitChannel: true }
-          }
-        });
-      }
+      const statusText = existing ? 'Updated' : 'Created';
+      // Merged into the latest saved config, so ping roles and filters are kept
+      await patchEventConfig(prisma, interaction.guildId, repository.id, eventType, { explicitChannel: true }, { channelId: channel.id });
 
       // Nicely formatted embedded response
       const displayUrl = repository.url.endsWith('.git') ? repository.url.slice(0, -4) : repository.url;

@@ -1,3 +1,4 @@
+const { sendNotification } = require('../functions/sendNotification');
 const express = require('express');
 const crypto = require('crypto');
 const querystring = require('querystring');
@@ -326,14 +327,14 @@ function initializeWebServer(prisma, botClient) {
           }
         }
 
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         // Comment notification sent successfully
 
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           // Messages sent counter incremented
         } catch (dbError) {
@@ -530,12 +531,12 @@ function initializeWebServer(prisma, botClient) {
         if (action === 'assigned' && payload.assignee) { embed.description = `${pr.user.login} assigned ${payload.assignee.login}.`; }
         // ... (other action specific descriptions)
 
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after PR event`);
         } catch (dbError) {
@@ -602,12 +603,12 @@ function initializeWebServer(prisma, botClient) {
         if (issue.labels && issue.labels.length > 0) { embed.fields.push({ name: 'Labels', value: issue.labels.map(l => `\`${l.name}\``).join(', '), inline: true }); }
         // ... (other action specific descriptions)
 
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after issue event`);
         } catch (dbError) {
@@ -662,14 +663,14 @@ function initializeWebServer(prisma, botClient) {
           timestamp: new Date().toISOString(),
           footer: { text: `GitHub Star Event` }
         };
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         console.log(`Sent star notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after star event`);
         } catch (dbError) {
@@ -722,15 +723,15 @@ function initializeWebServer(prisma, botClient) {
           timestamp: release.published_at || new Date().toISOString(),
           footer: { text: `GitHub Release` }
         };
-        if (release.body) { let body = stripHtmlComments(release.body); if (body) { if (body.length > 1500) {body = body.substring(0, 1497) + '...';} embed.description = body; } }
-        const sentMessage = await channel.send({ embeds: [embed] });
+        if (release.body) { let body = stripHtmlComments(release.body); if (body) { if (!config.noLimit && body.length > 1500) {body = body.substring(0, 1497) + '...';} embed.description = body; } }
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         console.log(`Sent release notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after release event`);
         } catch (dbError) {
@@ -750,8 +751,10 @@ function initializeWebServer(prisma, botClient) {
     // Prefer event-specific channel for forks
     const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'fork', repoContext.notificationChannelId);
 
-    if (!config || !config.actionsEnabled || !config.actionsEnabled[payload.action]) {
-      return { statusCode: 200, message: `Fork action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
+    // GitHub's fork payload has no \`action\` field; the filter key is 'created'.
+    const forkAction = payload.action || 'created';
+    if (!config || !config.actionsEnabled || !config.actionsEnabled[forkAction]) {
+      return { statusCode: 200, message: `Fork action '${forkAction}' disabled by config.`, channelId: null, messageId: null };
     }
 
     if (channelId === 'pending') {return { statusCode: 200, message: 'Fork event ack, channel pending.', channelId: null, messageId: null };}
@@ -779,14 +782,14 @@ function initializeWebServer(prisma, botClient) {
           timestamp: forkeeRepo.created_at || new Date().toISOString(),
           footer: { text: 'GitHub Fork Event' }
         };
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         console.log(`Sent fork notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after fork event`);
         } catch (dbError) {
@@ -807,8 +810,10 @@ function initializeWebServer(prisma, botClient) {
     // Prefer event-specific channel for create events
     const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'create', repoContext.notificationChannelId);
 
-    if (!config || !config.actionsEnabled || !config.actionsEnabled[payload.action]) {
-      return { statusCode: 200, message: `Create action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
+    // GitHub's create payload has no \`action\` field; the filter key is 'created'.
+    const createAction = payload.action || 'created';
+    if (!config || !config.actionsEnabled || !config.actionsEnabled[createAction]) {
+      return { statusCode: 200, message: `Create action '${createAction}' disabled by config.`, channelId: null, messageId: null };
     }
 
     if (channelId === 'pending') {return { statusCode: 200, message: 'Create event ack, channel pending.', channelId: null, messageId: null };}
@@ -847,14 +852,14 @@ function initializeWebServer(prisma, botClient) {
         if (refType === 'branch') {
           embed.description = `To track this branch specifically, use:\n\`/link ${repoUrl} ${refName} #channel\``;
         }
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         console.log(`Sent create notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after create event`);
         } catch (dbError) {
@@ -875,8 +880,10 @@ function initializeWebServer(prisma, botClient) {
     // Prefer event-specific channel for delete events
     const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'delete', repoContext.notificationChannelId);
 
-    if (!config || !config.actionsEnabled || !config.actionsEnabled[payload.action]) {
-      return { statusCode: 200, message: `Delete action '${payload.action}' disabled by config.`, channelId: null, messageId: null };
+    // GitHub's delete payload has no \`action\` field; the filter key is 'deleted'.
+    const deleteAction = payload.action || 'deleted';
+    if (!config || !config.actionsEnabled || !config.actionsEnabled[deleteAction]) {
+      return { statusCode: 200, message: `Delete action '${deleteAction}' disabled by config.`, channelId: null, messageId: null };
     }
 
     if (channelId === 'pending') {return { statusCode: 200, message: 'Delete event ack, channel pending.', channelId: null, messageId: null };}
@@ -907,14 +914,14 @@ function initializeWebServer(prisma, botClient) {
           timestamp: new Date().toISOString(),
           footer: { text: `GitHub ${refType.charAt(0).toUpperCase() + refType.slice(1)} Deletion` }
         };
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         console.log(`Sent delete notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after delete event`);
         } catch (dbError) {

@@ -1,3 +1,4 @@
+const { sendNotification } = require('../functions/sendNotification');
 const { findMatchingBranches } = require('../functions/branchMatcher');
 const { getEventRouting } = require('../functions/eventRouting');
 
@@ -84,14 +85,14 @@ async function handleMilestoneEvent(req, res, payload, prisma, botClient, repoCo
           });
         }
 
-        const sentMessage = await channel.send({ embeds: [embed] });
+        const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
         console.log(`Sent milestone notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
         // Increment messagesSent counter
         try {
           await prisma.server.update({
             where: { id: serverConfig.id },
-            data: { messagesSent: { increment: 1 } },
+            data: { messagesSent: { increment: sentCount } },
           });
           console.log(`Incremented messagesSent for server ${serverConfig.id} after milestone event`);
         } catch (dbError) {
@@ -151,6 +152,7 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
     }
 
     let lastMessageInfo = { channelId: null, messageId: null };
+    let pinged = false; // ping roles once per event, not once per matching branch
 
     // For each matching tracked branch, send a notification
     for (const trackedBranch of matchingBranches) {
@@ -243,7 +245,8 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
           }
 
 
-          const sentMessage = await channel.send({ embeds: [embed] });
+          const { message: sentMessage, sentCount } = await sendNotification(channel, embed, pinged ? null : config);
+          pinged = true;
           console.log(`Sent workflow notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
           // Store the last message info for return
@@ -253,7 +256,7 @@ async function handleWorkflowRunEvent(req, res, payload, prisma, botClient, repo
           try {
             await prisma.server.update({
               where: { id: serverConfig.id },
-              data: { messagesSent: { increment: 1 } },
+              data: { messagesSent: { increment: sentCount } },
             });
             console.log(`Incremented messagesSent for server ${serverConfig.id} after workflow event`);
           } catch (dbError) {

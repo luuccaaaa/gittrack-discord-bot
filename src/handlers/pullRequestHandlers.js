@@ -1,3 +1,4 @@
+const { sendNotification } = require('../functions/sendNotification');
 /**
  * Handles GitHub pull request review events
  * This file contains handlers for pull request review and review comment events
@@ -33,7 +34,7 @@ async function handlePRReviewEvent(req, res, payload, prisma, botClient, repoCon
   // This logic needs to be re-evaluated if getPullRequestRouting is removed.
   // For now, assuming we proceed without config checks here.
 
-  const { channelId, config } = await getEventRouting(prisma, repoContext, 'pull_request', repoContext.notificationChannelId);
+  const { channelId, config } = await getEventRouting(prisma, repoContext.id, 'pull_request', repoContext.notificationChannelId);
 
   // If this is a comment-only review notification and comments are not explicitly enabled, skip
   if (reviewState === 'commented') {
@@ -105,14 +106,14 @@ async function handlePRReviewEvent(req, res, payload, prisma, botClient, repoCon
         }
       }
 
-      const sentMessage = await channel.send({ embeds: [embed] });
+      const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
       console.log(`Sent PR review notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
       // Increment messagesSent counter
       try {
         await prisma.server.update({
           where: { id: serverConfig.id },
-          data: { messagesSent: { increment: 1 } },
+          data: { messagesSent: { increment: sentCount } },
         });
         console.log(`Incremented messagesSent for server ${serverConfig.id} after PR review event`);
       } catch (dbError) {
@@ -225,14 +226,14 @@ async function handlePRReviewCommentEvent(req, res, payload, prisma, botClient, 
         });
       }
 
-      const sentMessage = await channel.send({ embeds: [embed] });
+      const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
       console.log(`Sent PR review comment notification to channel ${channelId} in guild ${serverConfig.guildId}`);
 
       // Increment messagesSent counter
       try {
         await prisma.server.update({
           where: { id: serverConfig.id },
-          data: { messagesSent: { increment: 1 } },
+          data: { messagesSent: { increment: sentCount } },
         });
         console.log(`Incremented messagesSent for server ${serverConfig.id} after PR review comment event`);
       } catch (dbError) {

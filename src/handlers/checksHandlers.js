@@ -1,3 +1,4 @@
+const { sendNotification } = require('../functions/sendNotification');
 const { findMatchingBranches } = require('../functions/branchMatcher');
 const { getEventRouting } = require('../functions/eventRouting');
 
@@ -75,11 +76,11 @@ async function handleWorkflowJobEvent(req, res, payload, prisma, botClient, repo
         embed.fields.push({ name: 'Duration', value: minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`, inline: true });
       }
 
-      const sentMessage = await channel.send({ embeds: [embed] });
+      const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
 
       // Increment messagesSent counter
       try {
-        await prisma.server.update({ where: { id: serverConfig.id }, data: { messagesSent: { increment: 1 } } });
+        await prisma.server.update({ where: { id: serverConfig.id }, data: { messagesSent: { increment: sentCount } } });
       } catch (dbError) {
         console.error(`Failed to increment messagesSent for server ${serverConfig.id} after workflow_job event:`, dbError);
       }
@@ -118,6 +119,7 @@ async function handleCheckRunEvent(req, res, payload, prisma, botClient, repoCon
 
       if (matchingBranches.length > 0) {
         let lastMessageInfo = { channelId: null, messageId: null };
+        let pinged = false; // ping roles once per event, not once per matching branch
         for (const trackedBranch of matchingBranches) {
           // Use tracked branch channel if set, otherwise use the routed channel for this event type
           const channelId = trackedBranch.channelId || routedChannelId || 'pending';
@@ -167,11 +169,12 @@ async function handleCheckRunEvent(req, res, payload, prisma, botClient, repoCon
                 footer: { text: 'GitHub Check Run' }
               };
 
-              const sentMessage = await channel.send({ embeds: [embed] });
+              const { message: sentMessage, sentCount } = await sendNotification(channel, embed, pinged ? null : config);
+              pinged = true;
               lastMessageInfo = { channelId, messageId: sentMessage.id };
 
               try {
-                await prisma.server.update({ where: { id: serverConfig.id }, data: { messagesSent: { increment: 1 } } });
+                await prisma.server.update({ where: { id: serverConfig.id }, data: { messagesSent: { increment: sentCount } } });
               } catch (dbError) {
                 console.error(`Failed to increment messagesSent for server ${serverConfig.id} after check_run event:`, dbError);
               }
@@ -237,10 +240,10 @@ async function handleCheckRunEvent(req, res, payload, prisma, botClient, repoCon
         timestamp: checkRun.completed_at || checkRun.started_at || new Date().toISOString(),
         footer: { text: 'GitHub Check Run' }
       };
-      const sentMessage = await channel.send({ embeds: [embed] });
+      const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
 
       try {
-        await prisma.server.update({ where: { id: serverConfig.id }, data: { messagesSent: { increment: 1 } } });
+        await prisma.server.update({ where: { id: serverConfig.id }, data: { messagesSent: { increment: sentCount } } });
       } catch (dbError) {
         console.error(`Failed to increment messagesSent for server ${serverConfig.id} after check_run event:`, dbError);
       }
@@ -325,10 +328,10 @@ async function handleCheckSuiteEvent(req, res, payload, prisma, botClient, repoC
         embed.fields.push({ name: 'Conclusion', value: checkSuite.conclusion, inline: true });
       }
 
-      const sentMessage = await channel.send({ embeds: [embed] });
+      const { message: sentMessage, sentCount } = await sendNotification(channel, embed, config);
 
       try {
-        await prisma.server.update({ where: { id: serverConfig.id }, data: { messagesSent: { increment: 1 } } });
+        await prisma.server.update({ where: { id: serverConfig.id }, data: { messagesSent: { increment: sentCount } } });
       } catch (dbError) {
         console.error(`Failed to increment messagesSent for server ${serverConfig.id} after check_suite event:`, dbError);
       }
